@@ -7,33 +7,47 @@ type SignalWithCompany = Signal & { company: Company };
 
 async function getData() {
   const supabase = getSupabase();
+  const errors: string[] = [];
 
-  const { data: lastRun } = await supabase
+  const { data: lastRun, error: lastRunError } = await supabase
     .from("runs")
     .select("*")
     .order("started_at", { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (lastRunError) {
+    console.error("Supabase error loading last run:", lastRunError);
+    errors.push(`runs: ${lastRunError.message}`);
+  }
 
-  const { data: signals } = await supabase
+  const { data: signals, error: signalsError } = await supabase
     .from("signals")
     .select("*, company:companies(*)")
     .order("created_at", { ascending: false })
     .limit(100);
+  if (signalsError) {
+    console.error("Supabase error loading signals:", signalsError);
+    errors.push(`signals: ${signalsError.message}`);
+  }
 
-  const { count: companyCount } = await supabase
+  const { count: companyCount, error: companyCountError } = await supabase
     .from("companies")
     .select("*", { count: "exact", head: true });
+  if (companyCountError) {
+    console.error("Supabase error loading company count:", companyCountError);
+    errors.push(`companies: ${companyCountError.message}`);
+  }
 
   return {
     lastRun,
     signals: (signals ?? []) as unknown as SignalWithCompany[],
     companyCount: companyCount ?? 0,
+    errors,
   };
 }
 
 export default async function Home() {
-  const { lastRun, signals, companyCount } = await getData();
+  const { lastRun, signals, companyCount, errors } = await getData();
 
   return (
     <main>
@@ -43,6 +57,17 @@ export default async function Home() {
         public signals of future technology spending. Runs daily; emails a
         digest of new signals.
       </p>
+
+      {errors.length > 0 && (
+        <div className="error-banner">
+          <strong>Supabase query error{errors.length > 1 ? "s" : ""}:</strong>
+          <ul>
+            {errors.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="status-bar">
         <div className="stats">
