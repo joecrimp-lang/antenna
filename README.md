@@ -13,8 +13,8 @@ user accounts, no editing of the company list from the UI.
 
 1. Vercel Cron hits `/api/cron/research` once a day.
 2. For each of the 50 companies, the app asks OpenAI (Responses API, with
-   the `web_search` tool) to search the web and return any new, sourced
-   signals of future tech spending as JSON.
+   the `web_search_preview` tool) to search the web and return any new,
+   sourced signals of future tech spending as JSON.
 3. New signals are stored in Supabase (`signals` table); duplicates (same
    company + source URL) are skipped automatically.
 4. Any signal that hasn't been emailed yet gets sent in one digest email via
@@ -37,17 +37,19 @@ user accounts, no editing of the company list from the UI.
 
 ### 2. OpenAI
 
-1. Grab an API key with access to the Responses API and the `web_search`
-   tool.
+1. Grab an API key with access to the Responses API and the
+   `web_search_preview` tool.
 2. `OPENAI_MODEL` defaults to `gpt-5.6` in `.env.example`. Check your
-   OpenAI account for which models currently support `web_search` and set
+   OpenAI account for which models currently support web search and set
    this env var if you need a different one.
 3. This uses the OpenAI Responses API (`client.responses.create` with a
-   `web_search` tool) via the `openai` npm package (pinned to `^4.90.0`).
-   If that API has changed shape since this was written, run
-   `npm install openai@latest` and adjust `lib/research.ts` to match —
-   the current API reference is at
-   https://developers.openai.com/api/docs/guides/tools-web-search.
+   `web_search_preview` tool) via the `openai` npm package (pinned to
+   `^4.90.0`). The tool type name has changed before (this project
+   originally used `web_search`, which the installed SDK version rejected
+   at build time) and may change again — if `npm run build` fails on the
+   `tools` array, check the current API reference at
+   https://developers.openai.com/api/docs/guides/tools-web-search and the
+   installed SDK's TypeScript types for the accepted value.
 
 ### 3. Resend
 

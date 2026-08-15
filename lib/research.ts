@@ -51,7 +51,7 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
 
   const response = await client.responses.create({
     model,
-    tools: [{ type: "web_search" }],
+    tools: [{ type: "web_search_preview" }],
     input: PROMPT_TEMPLATE(company),
   });
 
