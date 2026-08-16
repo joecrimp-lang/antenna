@@ -6,7 +6,7 @@ import { sendDigestEmail, type DigestItem } from "./email";
 // the whole watchlist finishes within a single Vercel function invocation
 // (300s limit) instead of needing multiple invocations. Kept small on
 // purpose — reliability over speed.
-export const CONCURRENCY = 5;
+export const CONCURRENCY = 2;
 
 export type RunSummary = {
   runId: number;
