@@ -41,12 +41,31 @@ export async function sendDigestEmail(items: DigestItem[]) {
       <table style="width:100%;border-collapse:collapse;">${rows}</table>
     </div>`;
 
-  await resend.emails.send({
+  // The Resend SDK does NOT throw on API-level failures (invalid `to`,
+  // unverified sending domain, etc.) — it resolves successfully with
+  // { data, error }, and the caller is expected to check `error` itself.
+  // Previously this call's result was discarded entirely, so a rejected
+  // send looked identical to a successful one: no exception, nothing
+  // recorded as an error, and the caller (runFullResearch) would go on to
+  // mark the signals as emailed even though nothing was actually sent.
+  // Throwing here lets the existing try/catch in runFullResearch treat a
+  // failed send like any other failure — recorded in runs.error, and
+  // critically, it means emailed_at only gets set once we get here without
+  // throwing, i.e. after a confirmed successful send.
+  const { data, error } = await resend.emails.send({
     from,
     to,
     subject: `Tech spend signals digest — ${items.length} new`,
     html,
   });
+
+  if (error) {
+    throw new Error(
+      `Resend API error: ${error.message ?? JSON.stringify(error)}`
+    );
+  }
+
+  return data;
 }
 
 function escapeHtml(str: string) {
