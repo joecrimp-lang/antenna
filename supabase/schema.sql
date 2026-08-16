@@ -31,7 +31,8 @@ create table if not exists runs (
   status text not null default 'running',
   companies_processed int not null default 0,
   signals_found int not null default 0,
-  error text
+  error text,
+  cursor int not null default 0
 );
 
 create index if not exists signals_created_at_idx on signals (created_at desc);
