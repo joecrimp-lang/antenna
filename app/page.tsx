@@ -2,6 +2,12 @@ import { getSupabase, type Company, type Signal } from "@/lib/supabase";
 import RunNowButton from "./components/RunNowButton";
 
 export const dynamic = "force-dynamic";
+// force-dynamic alone forces this route to render on every request, but
+// doesn't stop individual fetch() calls made during that render (including
+// supabase-js's internal calls) from being served out of Next's Data Cache.
+// This forces every fetch in this route to bypass that cache and hit
+// Supabase fresh every time.
+export const fetchCache = "force-no-store";
 
 type SignalWithCompany = Signal & { company: Company };
 
