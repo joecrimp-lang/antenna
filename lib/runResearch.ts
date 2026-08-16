@@ -79,10 +79,21 @@ export async function runFullResearch(): Promise<RunSummary> {
     .single();
   if (runError || !run) throw new Error(`Could not create run row: ${runError?.message}`);
 
-  const { data: companies, error: companiesError } = await supabase
+  let companiesQuery = supabase
     .from("companies")
     .select("*")
     .order("rank", { ascending: true });
+
+  // Optional cap on how many companies a run processes, for piloting cost
+  // and behavior on a subset of the watchlist before running all 50. Unset
+  // (or not a positive integer) means no limit — behavior is unchanged.
+  const limitRaw = process.env.RESEARCH_COMPANY_LIMIT;
+  const limit = limitRaw ? parseInt(limitRaw, 10) : NaN;
+  if (Number.isFinite(limit) && limit > 0) {
+    companiesQuery = companiesQuery.limit(limit);
+  }
+
+  const { data: companies, error: companiesError } = await companiesQuery;
   if (companiesError || !companies) {
     throw new Error(`Could not load companies: ${companiesError?.message}`);
   }

@@ -35,8 +35,10 @@ const PROMPT_TEMPLATE = (company: Company) => `You are monitoring the media & en
 
 Search the web for the most recent such signals, ideally from the last 30 days. Only include genuine, specific, sourced findings with a real URL. Do not include generic company background, financial results with no technology angle, or speculation.
 
+Return AT MOST the 2 strongest findings — the most specific, most recent, best-sourced ones. Do not pad the list; if there is only 1 (or 0), return only that many. Keep "detail" tight: 1-2 sentences, not 2-4.
+
 Respond with ONLY a JSON array (no markdown fences, no commentary before or after). Each item must have this shape:
-{"summary": "one sentence", "detail": "2-4 sentences of supporting context", "source_url": "https://...", "source_title": "the article/press-release title", "published_date": "YYYY-MM-DD or null"}
+{"summary": "one sentence", "detail": "1-2 sentences of supporting context", "source_url": "https://...", "source_title": "the article/press-release title", "published_date": "YYYY-MM-DD or null"}
 
 If you find nothing relevant, respond with exactly: []`;
 
@@ -54,13 +56,14 @@ function extractJsonArray(text: string): unknown {
 
 export async function researchCompany(company: Company): Promise<ResearchFinding[]> {
   const client = getOpenAI();
-  const model = process.env.OPENAI_MODEL || "gpt-5.6";
+  const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 
   const response = await client.responses.create(
     {
       model,
       tools: [{ type: "web_search_preview" }],
       input: PROMPT_TEMPLATE(company),
+      max_output_tokens: 500,
     },
     { timeout: PER_COMPANY_TIMEOUT_MS, maxRetries: 0 }
   );
@@ -81,5 +84,6 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
       source_title: String(item.source_title ?? "").trim(),
       published_date: item.published_date ? String(item.published_date) : null,
     }))
-    .filter((f) => f.summary && f.source_url);
+    .filter((f) => f.summary && f.source_url)
+    .slice(0, 2);
 }

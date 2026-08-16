@@ -14,12 +14,13 @@ user accounts, no editing of the company list from the UI.
 1. Vercel Cron hits `/api/cron/research` once a day (or you trigger a run
    manually from the dashboard's "Run now" button).
 2. That request creates one row in the `runs` table, then processes all 50
-   companies **within that same request**, in concurrent groups of
-   `CONCURRENCY` (5) rather than one at a time or split across separate
-   background invocations — see "Batching history" below for why. For each
-   company, it asks OpenAI (Responses API, with the `web_search_preview`
-   tool) to search the web and return any new, sourced signals of future
-   tech spending as JSON.
+   companies (or fewer — see `RESEARCH_COMPANY_LIMIT` below) **within that
+   same request**, in concurrent groups of `CONCURRENCY` (5) rather than one
+   at a time or split across separate background invocations — see
+   "Batching history" below for why. For each company, it asks OpenAI
+   (Responses API, with the `web_search_preview` tool) to search the web and
+   return at most 2 new, sourced signals of future tech spending as JSON,
+   capped at 500 output tokens per company.
 3. New signals are stored in Supabase (`signals` table); duplicates (same
    company + source URL) are skipped automatically. One company failing
    (OpenAI error, bad response, etc.) doesn't stop the others in its group
@@ -82,9 +83,12 @@ on best-effort background execution.
 
 1. Grab an API key with access to the Responses API and the
    `web_search_preview` tool.
-2. `OPENAI_MODEL` defaults to `gpt-5.6` in `.env.example`. Check your
-   OpenAI account for which models currently support web search and set
-   this env var if you need a different one.
+2. `OPENAI_MODEL` defaults to `gpt-5.6-luna` in `.env.example` — the
+   cheapest/fastest tier in the GPT-5.6 family, chosen after an early run on
+   the flagship `gpt-5.6` ("Sol") tier turned out too slow and expensive for
+   this MVP (see "Cost" below). Check your OpenAI account for which models
+   currently support web search and set this env var if you need a
+   different one.
 3. This uses the OpenAI Responses API (`client.responses.create` with a
    `web_search_preview` tool) via the `openai` npm package (pinned to
    `^4.90.0`). The tool type name has changed before (this project
@@ -93,6 +97,24 @@ on best-effort background execution.
    `tools` array, check the current API reference at
    https://developers.openai.com/api/docs/guides/tools-web-search and the
    installed SDK's TypeScript types for the accepted value.
+4. Each research call is capped at `max_output_tokens: 500` and the prompt
+   asks for at most 2 findings per company (also enforced in code as a
+   belt-and-suspenders `slice(0, 2)` in `lib/research.ts`), to keep both
+   cost and latency down per company.
+
+#### Cost
+
+OpenAI's published per-1M-token pricing for the GPT-5.6 family (input /
+output) is: Sol (flagship) $5 / $30, Terra (mid) $2.50 / $15, Luna
+(fast/cheap) $1 / $6. Web search tool calls are billed separately, roughly
+flat per call. This MVP defaults to Luna specifically to minimize cost, but
+the actual dollar cost of a full 50-company run hasn't been measured yet —
+an early run on Sol exhausted a $10 balance before finishing 50 companies
+(partly due to timeouts and rate limits, not just per-token price), and
+there isn't yet a reliable per-run cost figure for Luna with the tightened
+prompt/output caps in this version. Use `RESEARCH_COMPANY_LIMIT` (below) to
+run a small pilot (e.g. 5 companies) and check actual token usage / billing
+before scaling back up to all 50.
 
 ### 3. Resend
 
@@ -109,6 +131,10 @@ in your Vercel project's Environment Variables for production:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL` (optional)
+- `RESEARCH_COMPANY_LIMIT` (optional) — caps how many companies a run
+  processes, e.g. set to `5` to pilot on a subset of the watchlist and check
+  real cost/behavior before running the full 50. Unset means no limit (all
+  companies, ordered by `rank`).
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `DIGEST_EMAIL_TO` — defaults to `joe.crimp@gmail.com` if unset, but set it
@@ -151,6 +177,13 @@ in your Vercel project's Environment Variables for production:
   not a retry and not a failed run. Worst case for the whole run is now a
   real ceiling (10 rounds × 25s ≈ 250s for research, plus a few seconds of
   Supabase/Resend overhead), comfortably under Vercel's 300s limit.
+- Each company is capped at 2 findings and 500 output tokens per OpenAI
+  call, to keep cost and latency down. This is a hard cap on breadth, not
+  just a formatting preference — a company with more than 2 genuinely
+  distinct signals in a given run will only surface its top 2.
+- The exact cost of a full run hasn't been measured yet on the current
+  model/config — use `RESEARCH_COMPANY_LIMIT` to pilot on a handful of
+  companies first. See "Cost" under the OpenAI setup section above.
 
 ## Local development
 
