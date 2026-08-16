@@ -32,8 +32,9 @@ const PROMPT_TEMPLATE = (company: Company) => `You are monitoring the media & en
 - major technology-related hiring pushes or job postings
 - technology RFPs, procurement announcements, or tenders
 - acquisitions of technology companies or startups
+- new internal AI/technology teams, labs, studios, or platform launches — including associated specialist hiring (e.g. a new "AI Creative Lab," an AI-native production platform, a technology division consolidation)
 
-Search the web for the most recent such signals, ideally from the last 30 days. Only include genuine, specific, sourced findings with a real URL. Do not include generic company background, financial results with no technology angle, or speculation.
+Search the web for the most recent such signals, ideally from the last 90 days. Check company press releases/newsroom and investor relations pages as well as relevant trade press (e.g. Variety, Deadline, Broadcast, Digital TV Europe, The Hollywood Reporter). Only include genuine, specific, sourced findings with a real URL. Do not include generic company background, financial results with no technology angle, or speculation.
 
 Return AT MOST the 2 strongest findings — the most specific, most recent, best-sourced ones. Do not pad the list; if there is only 1 (or 0), return only that many. Keep "detail" tight: 1-2 sentences, not 2-4.
 
@@ -63,7 +64,7 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
       model,
       tools: [{ type: "web_search_preview" }],
       input: PROMPT_TEMPLATE(company),
-      max_output_tokens: 500,
+      max_output_tokens: 1200,
     },
     { timeout: PER_COMPANY_TIMEOUT_MS, maxRetries: 0 }
   );

@@ -15,12 +15,12 @@ user accounts, no editing of the company list from the UI.
    manually from the dashboard's "Run now" button).
 2. That request creates one row in the `runs` table, then processes all 50
    companies (or fewer — see `RESEARCH_COMPANY_LIMIT` below) **within that
-   same request**, in concurrent groups of `CONCURRENCY` (5) rather than one
+   same request**, in concurrent groups of `CONCURRENCY` (2) rather than one
    at a time or split across separate background invocations — see
    "Batching history" below for why. For each company, it asks OpenAI
    (Responses API, with the `web_search_preview` tool) to search the web and
    return at most 2 new, sourced signals of future tech spending as JSON,
-   capped at 500 output tokens per company.
+   capped at 1200 output tokens per company.
 3. New signals are stored in Supabase (`signals` table); duplicates (same
    company + source URL) are skipped automatically. One company failing
    (OpenAI error, bad response, etc.) doesn't stop the others in its group
@@ -48,21 +48,26 @@ documented as suitable only for trivial things like analytics pings). Hobby
 Cron also can't fire more than once a day, so there was no reliable way to
 drive multiple invocations for the unattended daily run either.
 
-The current design processes companies **concurrently** (5 at a time)
-instead of **sequentially**, which is what actually solves the timeout risk
-in practice: 50 companies at 5-way concurrency is roughly 10 sequential
-"rounds," each bounded by its slowest member rather than the sum of 5 —
-typically finishing in well under 300s. Each individual OpenAI call is also
-capped at 25s (`PER_COMPANY_TIMEOUT_MS` in `lib/research.ts`, `maxRetries:
-0` so the SDK doesn't quietly retry past that budget), so the worst case is
-now a real ceiling rather than an open-ended risk: 10 rounds × 25s = 250s
-for the research itself, plus a few seconds of Supabase/Resend overhead —
-comfortably inside the 300s limit even if every single company times out. A
-timeout is treated as an ordinary per-company failure (recorded on the run,
-processing continues), not a retry or a failure of the whole run. This is
-simpler and more reliable than the earlier chained-batches approach, since
-it relies only on an ordinary `await`-driven function call completing, not
-on best-effort background execution.
+The current design processes companies **concurrently** (`CONCURRENCY` at a
+time, currently 2 — see "Recall tuning" and the known-limitations note
+below for why this was reduced from an initial 5) instead of
+**sequentially**, which is what actually solves the timeout risk in
+practice: 50 companies at N-way concurrency is roughly 50/N sequential
+"rounds," each bounded by its slowest member rather than the sum of N.
+Each individual OpenAI call is also capped at 25s
+(`PER_COMPANY_TIMEOUT_MS` in `lib/research.ts`, `maxRetries: 0` so the SDK
+doesn't quietly retry past that budget), so the worst case is a real
+ceiling rather than an open-ended risk: (50/N) rounds × 25s for the
+research itself, plus a few seconds of Supabase/Resend overhead. At the
+original `CONCURRENCY = 5` that ceiling was comfortably inside Vercel's
+300s limit (250s) even if every company timed out; at the current
+`CONCURRENCY = 2` it is not (625s worst case) — see the known-limitations
+note below. A timeout is treated as an ordinary per-company failure
+(recorded on the run, processing continues), not a retry or a failure of
+the whole run. This is simpler and more reliable than the earlier
+chained-batches approach, since it relies only on an ordinary
+`await`-driven function call completing, not on best-effort background
+execution.
 
 ## Setup
 
@@ -97,10 +102,37 @@ on best-effort background execution.
    `tools` array, check the current API reference at
    https://developers.openai.com/api/docs/guides/tools-web-search and the
    installed SDK's TypeScript types for the accepted value.
-4. Each research call is capped at `max_output_tokens: 500` and the prompt
+4. Each research call is capped at `max_output_tokens: 1200` and the prompt
    asks for at most 2 findings per company (also enforced in code as a
    belt-and-suspenders `slice(0, 2)` in `lib/research.ts`), to keep both
-   cost and latency down per company.
+   cost and latency down per company. Raised from an initial 500 after a
+   5-company pilot showed the lower cap was likely truncating the model's
+   output before it could finish searching and respond — see "Recall tuning"
+   below.
+5. The prompt asks the model to search over the last 90 days (widened from
+   an initial 30) and explicitly calls out new internal AI/technology teams,
+   labs, studios, or platform launches (and related hiring) as a signal
+   category, alongside company press/IR pages and relevant trade press
+   (Variety, Deadline, Broadcast, Digital TV Europe, The Hollywood
+   Reporter) — added for the same reason.
+
+#### Recall tuning
+
+A 5-company pilot on companies ranked 6-10 (Luna, the original 500-token
+cap, 30-day window) returned zero stored signals, despite independent
+research finding real, publicly reported signals for at least two of those
+companies (an AI-native production platform under active hiring, and a
+newly launched AI creative lab). The most likely cause: `max_output_tokens`
+capped the *entire* Responses API turn, including the model's web-search
+tool use, not just the final JSON — for a fast/cheap model like Luna,
+narrower or less obvious signals could exhaust that budget before the model
+finished searching and writing a response, which fails silently (the code
+treats malformed/truncated output as "found nothing," not an error). The
+token cap increase and the added signal category / trade-press guidance
+above are meant to address that; the 90-day window is a smaller hedge
+against real signals being excluded on recency alone. This hasn't yet been
+re-validated with another pilot — do that next (`RESEARCH_COMPANY_LIMIT=5`,
+`RESEARCH_COMPANY_OFFSET=5`) before assuming it's fixed.
 
 #### Cost
 
@@ -180,13 +212,20 @@ in your Vercel project's Environment Variables for production:
 - A company whose OpenAI call runs past `PER_COMPANY_TIMEOUT_MS` (25s, in
   `lib/research.ts`) is recorded as a per-company failure (its error goes on
   the run) and processing moves on — same as any other per-company error,
-  not a retry and not a failed run. Worst case for the whole run is now a
-  real ceiling (10 rounds × 25s ≈ 250s for research, plus a few seconds of
-  Supabase/Resend overhead), comfortably under Vercel's 300s limit.
-- Each company is capped at 2 findings and 500 output tokens per OpenAI
-  call, to keep cost and latency down. This is a hard cap on breadth, not
-  just a formatting preference — a company with more than 2 genuinely
-  distinct signals in a given run will only surface its top 2.
+  not a retry and not a failed run. **Worst-case timing note:** with
+  `CONCURRENCY` now at 2 (reduced from 5 after a pilot run hit Luna's
+  200,000 TPM rate limit at concurrency 5), a full 50-company run is 25
+  rounds, not 10. At the 25s
+  per-company ceiling that's up to 25 × 25s = 625s in the worst case (every
+  single company timing out), which exceeds Vercel's 300s Hobby limit. In
+  practice most calls finish well under 25s, so this hasn't caused a
+  problem yet, but the safety margin this ceiling used to provide at
+  concurrency 5 no longer holds at concurrency 2 — worth keeping an eye on
+  if timeouts start showing up on real runs.
+- Each company is capped at 2 findings and 1200 output tokens per OpenAI
+  call, to keep cost and latency down. The finding cap is a hard cap on
+  breadth, not just a formatting preference — a company with more than 2
+  genuinely distinct signals in a given run will only surface its top 2.
 - The exact cost of a full run hasn't been measured yet on the current
   model/config — use `RESEARCH_COMPANY_LIMIT` (and `RESEARCH_COMPANY_OFFSET`
   to pilot a different slice of the watchlist) to pilot on a handful of
