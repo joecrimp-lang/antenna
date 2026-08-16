@@ -112,9 +112,10 @@ the actual dollar cost of a full 50-company run hasn't been measured yet —
 an early run on Sol exhausted a $10 balance before finishing 50 companies
 (partly due to timeouts and rate limits, not just per-token price), and
 there isn't yet a reliable per-run cost figure for Luna with the tightened
-prompt/output caps in this version. Use `RESEARCH_COMPANY_LIMIT` (below) to
-run a small pilot (e.g. 5 companies) and check actual token usage / billing
-before scaling back up to all 50.
+prompt/output caps in this version. Use `RESEARCH_COMPANY_LIMIT` (and
+optionally `RESEARCH_COMPANY_OFFSET`, both below) to run a small pilot (e.g.
+5 companies) and check actual token usage / billing before scaling back up
+to all 50.
 
 ### 3. Resend
 
@@ -135,6 +136,11 @@ in your Vercel project's Environment Variables for production:
   processes, e.g. set to `5` to pilot on a subset of the watchlist and check
   real cost/behavior before running the full 50. Unset means no limit (all
   companies, ordered by `rank`).
+- `RESEARCH_COMPANY_OFFSET` (optional) — skips this many companies (in rank
+  order) before the limit above is applied, so you can pilot on a different
+  slice of the watchlist. E.g. `RESEARCH_COMPANY_LIMIT=5` with
+  `RESEARCH_COMPANY_OFFSET=5` processes the companies ranked 6-10. Unset
+  means start from the beginning of the watchlist (rank 1).
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `DIGEST_EMAIL_TO` — defaults to `joe.crimp@gmail.com` if unset, but set it
@@ -182,7 +188,8 @@ in your Vercel project's Environment Variables for production:
   just a formatting preference — a company with more than 2 genuinely
   distinct signals in a given run will only surface its top 2.
 - The exact cost of a full run hasn't been measured yet on the current
-  model/config — use `RESEARCH_COMPANY_LIMIT` to pilot on a handful of
+  model/config — use `RESEARCH_COMPANY_LIMIT` (and `RESEARCH_COMPANY_OFFSET`
+  to pilot a different slice of the watchlist) to pilot on a handful of
   companies first. See "Cost" under the OpenAI setup section above.
 
 ## Local development

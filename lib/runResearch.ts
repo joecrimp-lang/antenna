@@ -84,12 +84,27 @@ export async function runFullResearch(): Promise<RunSummary> {
     .select("*")
     .order("rank", { ascending: true });
 
-  // Optional cap on how many companies a run processes, for piloting cost
-  // and behavior on a subset of the watchlist before running all 50. Unset
-  // (or not a positive integer) means no limit — behavior is unchanged.
+  // Optional cap on how many companies a run processes, and an optional
+  // starting offset into the rank-ordered watchlist, for piloting cost and
+  // behavior on a subset of companies (e.g. LIMIT=5, OFFSET=5 processes the
+  // companies ranked 6-10) before running all 50. Unset/invalid means no
+  // limit and/or no offset — behavior is unchanged.
   const limitRaw = process.env.RESEARCH_COMPANY_LIMIT;
   const limit = limitRaw ? parseInt(limitRaw, 10) : NaN;
-  if (Number.isFinite(limit) && limit > 0) {
+  const hasLimit = Number.isFinite(limit) && limit > 0;
+
+  const offsetRaw = process.env.RESEARCH_COMPANY_OFFSET;
+  const offset = offsetRaw ? parseInt(offsetRaw, 10) : NaN;
+  const hasOffset = Number.isFinite(offset) && offset > 0;
+
+  if (hasOffset) {
+    // .range() is an inclusive [from, to] window, so it covers both the
+    // offset and the limit in one call. With no limit set, use a generous
+    // upper bound — comfortably beyond the 50-company watchlist — so the
+    // offset alone still returns "everything from here on".
+    const to = offset + (hasLimit ? limit : 10_000) - 1;
+    companiesQuery = companiesQuery.range(offset, to);
+  } else if (hasLimit) {
     companiesQuery = companiesQuery.limit(limit);
   }
 
