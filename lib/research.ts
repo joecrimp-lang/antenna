@@ -15,6 +15,13 @@ function getOpenAI() {
   return new OpenAI({ apiKey });
 }
 
+// Caps how long a single company's OpenAI call can run, so one slow request
+// can't keep an entire concurrency group (and thus the whole run) alive
+// indefinitely. maxRetries is set to 0 so the SDK doesn't silently retry
+// past this budget on its own — a timeout here is just a per-company
+// failure, caught and recorded by the caller like any other error.
+const PER_COMPANY_TIMEOUT_MS = 25_000;
+
 const PROMPT_TEMPLATE = (company: Company) => `You are monitoring the media & entertainment company "${company.name}"${
   company.website ? ` (${company.website})` : ""
 } for PUBLIC signals that suggest FUTURE TECHNOLOGY SPENDING. That means things like:
@@ -49,11 +56,14 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
   const client = getOpenAI();
   const model = process.env.OPENAI_MODEL || "gpt-5.6";
 
-  const response = await client.responses.create({
-    model,
-    tools: [{ type: "web_search_preview" }],
-    input: PROMPT_TEMPLATE(company),
-  });
+  const response = await client.responses.create(
+    {
+      model,
+      tools: [{ type: "web_search_preview" }],
+      input: PROMPT_TEMPLATE(company),
+    },
+    { timeout: PER_COMPANY_TIMEOUT_MS, maxRetries: 0 }
+  );
 
   const text = (response as { output_text?: string }).output_text ?? "";
   const parsed = extractJsonArray(text);

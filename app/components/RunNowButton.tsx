@@ -3,6 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+type RunResponse = {
+  error?: string;
+  companiesProcessed?: number;
+  signalsFound?: number;
+};
+
 export default function RunNowButton() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -19,7 +25,7 @@ export default function RunNowButton() {
       // The response might not be JSON at all — e.g. a Vercel timeout or
       // error page — so don't let res.json() throw an unhandled parse
       // error straight into the UI.
-      let data: { error?: string; runId?: number } | null = null;
+      let data: RunResponse | null = null;
       try {
         data = await res.json();
       } catch {
@@ -30,7 +36,11 @@ export default function RunNowButton() {
         throw new Error(data?.error || `Request failed (HTTP ${res.status})`);
       }
 
-      setMessage("Run started — refresh in a few minutes to see results.");
+      const companies = data?.companiesProcessed ?? 0;
+      const signals = data?.signalsFound ?? 0;
+      setMessage(
+        `Done — processed ${companies} compan${companies === 1 ? "y" : "ies"}, found ${signals} new signal${signals === 1 ? "" : "s"}.`
+      );
       router.refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -42,7 +52,7 @@ export default function RunNowButton() {
   return (
     <div>
       <button onClick={handleClick} disabled={loading}>
-        {loading ? "Starting..." : "Run now"}
+        {loading ? "Running... (can take a few minutes)" : "Run now"}
       </button>
       {message && (
         <div style={{ color: "#1a7a3a", fontSize: 13, marginTop: 6 }}>
