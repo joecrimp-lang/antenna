@@ -43,6 +43,14 @@ export type Company = {
   // Documentation only — why research_enabled is set the way it is. Never
   // read by any query or filter; see 005_organisation_model.sql's header.
   research_scope_note: string | null;
+  // Phase 3B.1 — organisation-level editorial interpretation ("Antenna
+  // View", supabase/008_organisation_antenna_view.sql), same pattern as
+  // theme_scores.narrative (Chunk 3): regenerated in place by
+  // scripts/generateOrganisationNarratives.ts, not by the live research
+  // pipeline. NULL means "not yet generated" — the organisation page must
+  // render a clear pending state, not assume every company has one.
+  antenna_view: string | null;
+  antenna_view_generated_at: string | null;
 };
 
 export type Signal = {

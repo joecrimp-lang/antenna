@@ -27,6 +27,12 @@
   --color-emerging-soft: #f3e6c8;
   --color-limited: #8a8578;
   --color-limited-soft: #ece9df;
+  /* Phase 3B.1 — Market Signal's "Watch" state. Deliberately distinct from
+     both --color-emerging (too similar a meaning to reuse without visually
+     conflating the two states) and --color-limited (Watch means activity
+     genuinely exists, unlike Limited). */
+  --color-watch: #9c6b3f;
+  --color-watch-soft: #ede2d4;
 
   --font-headline: var(--font-serif), Georgia, "Times New Roman", serif;
   --font-body: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
@@ -143,6 +149,36 @@ button {
 .badge--limited {
   color: var(--color-limited);
   background: var(--color-limited-soft);
+}
+
+/* Phase 3B — Buyer/Vendor organisation-type labels (SignalCard,
+   /organisations/[slug]). Deliberately neutral rather than reusing the
+   gold/teal accent pair: those two colors are reserved for Opportunity and
+   Momentum specifically (see the token comments above), and Buyer/Vendor is
+   an unrelated distinction — giving it its own colors would create a false
+   visual association with the score meanings. */
+.badge--neutral {
+  color: var(--color-ink-soft);
+  background: var(--color-border-soft);
+}
+
+/* Phase 3B.1 — Market Signal states (lib/marketSignal.ts). "emerging" and
+   "limited" reuse the badge classes already defined above (same word, same
+   meaning, previously used for opportunity_strength) — only the two states
+   that don't already have a class need one here. */
+.badge--accelerating {
+  color: var(--color-teal);
+  background: var(--color-teal-soft);
+}
+
+.badge--established {
+  color: var(--color-strong);
+  background: var(--color-strong-soft);
+}
+
+.badge--watch {
+  color: var(--color-watch);
+  background: var(--color-watch-soft);
 }
 
 .error-banner {
