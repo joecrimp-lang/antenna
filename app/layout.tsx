@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { ReactNode } from "react";
 import { Source_Serif_4, Inter } from "next/font/google";
+import Footer from "./components/Footer";
 
 // Two-typeface system: a distinguished serif for headlines/editorial prose
 // (the "intelligence report" register) and a clean grotesk for UI chrome,
@@ -31,7 +32,14 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${serif.variable} ${sans.variable}`}>
-      <body>{children}</body>
+      {/* Footer rendered once here, not per-page, so every route (home,
+          theme detail, organisation) gets the same site-wide MVP footer /
+          trust layer without duplicating it into each page.tsx. Sits as a
+          sibling of the page's own <main>, same as any page footer. */}
+      <body>
+        {children}
+        <Footer />
+      </body>
     </html>
   );
 }

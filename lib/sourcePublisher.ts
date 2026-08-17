@@ -9,10 +9,24 @@
 //
 // A small lookup table covers outlets Antenna is likely to cite in media &
 // entertainment technology coverage. Anything not in the table falls back
-// to a cleaned-up version of its domain (e.g. "adobe.com" -> "Adobe.com") —
+// to its plain lowercase domain (e.g. "adobe.com" stays "adobe.com") —
 // honest and still identifies the source, just less polished than a curated
 // name. Extend the table as unrecognised domains come up in practice; this
 // is plain data, not methodology.
+//
+// Casing fix: this table is also the ONLY place a domain's casing is
+// decided now. A domain not in the table used to be run through a naive
+// "capitalise the first letter" fallback (titleCaseLabel), which produced
+// wrong casing for anything that wasn't a simple single-word brand name:
+// "bbc.co.uk" (before it was added below) became "Bbc.co.uk", a
+// compound-TLD domain, not the brand "BBC" capitalised. A domain is not a
+// proper noun with a "correct" title-case the way a publication name is,
+// so guessing at capitalisation for domains Antenna doesn't recognise was
+// the bug, not a display nicety. The fix: an unrecognised domain now
+// displays exactly as-is, lowercase (hostname is already lowercased
+// below), and every outlet/brand that DOES need its own casing (BBC News,
+// IBC365, AWS, NVIDIA, Google Cloud, ...) gets a curated entry here
+// instead — the table does the casing work now, not a heuristic.
 const KNOWN_PUBLISHERS: Record<string, string> = {
   "bbc.co.uk": "BBC News",
   "bbc.com": "BBC News",
@@ -31,6 +45,10 @@ const KNOWN_PUBLISHERS: Record<string, string> = {
   "adage.com": "Ad Age",
   "adweek.com": "Adweek",
   "ibc.org": "IBC365",
+  // ibc.org is the IBC event's own site; ibc365.com is IBC365's actual
+  // publication domain and the one signals are more likely to cite as a
+  // source — both map to the same brand name.
+  "ibc365.com": "IBC365",
   "tvbeurope.com": "TVBEurope",
   "digitaltveurope.com": "Digital TV Europe",
   "streamingmedia.com": "Streaming Media",
@@ -42,18 +60,21 @@ const KNOWN_PUBLISHERS: Record<string, string> = {
   "theinformation.com": "The Information",
   "engadget.com": "Engadget",
   "arstechnica.com": "Ars Technica",
+  // Vendor/company domains that can plausibly appear as a signal's own
+  // source (e.g. a company blog post or press release counted as
+  // evidence), where the registrable domain alone wouldn't read as the
+  // brand's official casing (AWS, not "Aws"; NVIDIA, not "Nvidia").
+  "aws.amazon.com": "AWS",
+  "nvidia.com": "NVIDIA",
+  "blogs.nvidia.com": "NVIDIA",
+  "cloud.google.com": "Google Cloud",
 };
 
-function titleCaseLabel(label: string): string {
-  if (!label) return label;
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
 // "press.adobe.com" -> "adobe.com" (drop a subdomain, keep the registrable
-// domain) before falling back to a title-cased guess. Not a full public-
-// suffix-list implementation (e.g. "bbc.co.uk" would over-strip to "co.uk")
-// — known two-part domains like that are already covered by the lookup
-// table above, so this fallback only runs for domains not already handled.
+// domain). Not a full public-suffix-list implementation (e.g. an unlisted
+// "example.co.uk" would over-strip to "co.uk") — known compound-TLD
+// domains like that are already covered by the lookup table above, so this
+// fallback only ever runs for domains not already handled there.
 function registrableDomain(hostname: string): string {
   const parts = hostname.split(".");
   return parts.length > 2 ? parts.slice(-2).join(".") : hostname;
@@ -65,11 +86,10 @@ export function publisherLabel(sourceUrl: string | null, fallbackTitle: string |
       const hostname = new URL(sourceUrl).hostname.replace(/^www\./, "").toLowerCase();
       if (KNOWN_PUBLISHERS[hostname]) return KNOWN_PUBLISHERS[hostname];
 
-      const domain = registrableDomain(hostname);
-      const dotIndex = domain.indexOf(".");
-      const label = dotIndex === -1 ? domain : domain.slice(0, dotIndex);
-      const suffix = dotIndex === -1 ? "" : domain.slice(dotIndex);
-      return `${titleCaseLabel(label)}${suffix}`;
+      // Not a known outlet/brand: show the plain domain, lowercase, as-is
+      // — see the header comment for why guessing at capitalisation here
+      // was the bug.
+      return registrableDomain(hostname);
     } catch {
       // Malformed source_url — fall through to the title-based fallback.
     }

@@ -1,0 +1,40 @@
+.back {
+  display: inline-block;
+  margin-top: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--color-ink);
+}
+
+.titleRow {
+  margin-top: 20px;
+}
+
+.title {
+  font-size: 32px;
+  margin-top: 8px;
+}
+
+.prose {
+  margin-top: 28px;
+  max-width: 640px;
+  padding-bottom: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.prose p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--color-ink-soft);
+}
+
+.prose strong {
+  color: var(--color-ink);
+}

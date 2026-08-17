@@ -1,30 +1,42 @@
 // Homepage card. Chunk 3 built the base layout; Phase 3B removed the
 // organisation count in favour of "Leading activity" org names (see the
-// bottom of this file); Phase 3B.1 adds two more things per the brief:
-// (1) Market Signal now sits above Opportunity/Momentum, replacing the old
-// opportunity_strength badge (Strong/Emerging/Limited) the brief explicitly
-// asked not to keep using as-is; (2) a fixed one-line theme definition
-// ("What this means") so a reader doesn't need prior media-tech knowledge
-// before the numbers mean anything to them.
+// bottom of this file); Phase 3B.1 added Market Signal above Opportunity/
+// Momentum, replacing the old opportunity_strength badge (Strong/Emerging/
+// Limited) the brief explicitly asked not to keep using as-is; Phase 3B.2
+// then added a fixed one-line theme definition ("What this means") above
+// the interpretation zone.
 //
-// Phase 3B.2 (decision doc §5): "Theme cards should answer: What is this?
-// (theme definition), What is happening? (market interpretation), Who is
-// involved? (leading activity)". The card now makes that three-part
-// structure visible rather than implicit: the definition sits in its own
-// zone, a thin rule separates it from the interpretation zone (signal,
-// scores, narrative, tinted so it reads as Antenna's read rather than fixed
-// data), and a colour accent tied to the theme's Market Signal state gives
-// the card a scannable identity before any text is read.
+// Editorial differentiation pass: cards were reading as too similar to one
+// another, and the fixed theme definition was the reason why — 10 themes,
+// 10 definitions, all written in the same descriptive register ("The use
+// of...", "The systems that...", "How media organisations..."), so every
+// card's first line of body text scanned as interchangeable regardless of
+// what was actually happening in that theme. The definition is now theme-
+// detail-page-only (see app/themes/[slug]/page.tsx, which still shows it
+// under "What this means"); the card leads straight from the title into
+// Antenna's own generated read, score.narrative_summary — one sentence,
+// framed by the generation prompt (scripts/generateThemeNarratives.ts) to
+// answer "why does this theme matter right now" rather than restate the
+// numbers, and explicitly instructed to vary its own sentence shape theme
+// to theme rather than share a template. That's what actually makes each
+// card feel distinct: not the layout, the copy.
 //
 // The card is still not a single <Link> wrapping everything — the leading-
 // organisation names need to be their own links to /organisations/[slug],
 // and an <a> cannot nest inside another <a> (see the Phase 3B version of
-// this comment for the full explanation). Only the definition/signal/
-// scores/summary block is wrapped in the "open this theme" Link.
+// this comment for the full explanation). Only the signal/scores/summary
+// block is wrapped in the "open this theme" Link.
+//
+// Presentation polish: the click-through wasn't obvious, so a small text
+// CTA ("View theme intelligence →") is now the last thing inside that same
+// Link, right after the summary. It's an affordance, not a second button:
+// no border/background, same click target the card already had (the CTA
+// is inside the existing Link, not a new one), and it sits below the
+// summary rather than displacing anything already there. meta/leading stay
+// exactly where they were, outside the Link, unchanged.
 import Link from "next/link";
 import type { ThemeScore } from "@/lib/supabase";
 import { themeToSlug } from "@/lib/themeSlug";
-import { themeDefinition } from "@/lib/themeDefinitions";
 import { computeMarketSignal, MARKET_SIGNAL_COLOR_VAR } from "@/lib/marketSignal";
 import ScoreIndicator from "./ScoreIndicator";
 import MarketSignalBadge from "./MarketSignalBadge";
@@ -53,19 +65,18 @@ export default function ThemeCard({
         <div className={styles.top}>
           <h3 className={styles.title}>{score.theme}</h3>
         </div>
-        <p className={styles.definition}>{themeDefinition(score.theme)}</p>
 
-        <div className={styles.interpretation}>
-          <MarketSignalBadge state={marketSignal} />
+        <MarketSignalBadge state={marketSignal} />
 
-          <div className={styles.scores}>
-            <ScoreIndicator label="Opportunity" value={score.opportunity_score} variant="gold" />
-            <ScoreIndicator label="Momentum" value={score.momentum_score} variant="teal" />
-          </div>
-          <p className={styles.summary}>
-            {score.narrative_summary ?? "Editorial analysis pending for this theme."}
-          </p>
+        <div className={styles.scores}>
+          <ScoreIndicator label="Opportunity" value={score.opportunity_score} variant="gold" />
+          <ScoreIndicator label="Momentum" value={score.momentum_score} variant="teal" />
         </div>
+        <p className={styles.summary}>
+          {score.narrative_summary ?? "Editorial analysis pending for this theme."}
+        </p>
+
+        <span className={styles.cta}>View theme intelligence →</span>
       </Link>
 
       <div className={styles.meta}>

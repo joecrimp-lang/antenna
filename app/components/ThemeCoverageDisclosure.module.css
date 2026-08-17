@@ -1,0 +1,59 @@
+/* Subtle control, not a card — this sits below 5 fully-styled score cards,
+   so it deliberately has no border/shadow/background of its own until
+   opened, just a thin top rule to separate it from the grid. */
+.details {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--color-ink-soft);
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--color-ink-faint);
+  border-bottom: 1.5px solid var(--color-ink-faint);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.details[open] .chevron {
+  transform: rotate(-135deg);
+}
+
+/* Same grid layout as the leading cards (home.module.css .grid) so the
+   "other" cards read as the same product, not a different layout system.
+   No group label/heading above it on purpose (see header comment) — it
+   sits directly under the "View more" control. */
+.otherGrid {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+/* Dims the whole card uniformly (border, text, badge, everything) without
+   touching ThemeCard.tsx/module.css at all — the leading cards above stay
+   completely unmodified, and this is the only thing that marks these as
+   "not currently in the top five" rather than a second, competing ranking. */
+.otherCard {
+  opacity: 0.78;
+}
