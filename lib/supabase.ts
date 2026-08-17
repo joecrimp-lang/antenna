@@ -83,19 +83,40 @@ export type ThemeScore = {
   signal_diversity: number;
   velocity_pct: number | null;
   momentum_score: number | null;
+  // Chunk 3 — component values behind opportunity_score, persisted so the
+  // theme detail page's score-transparency section can show real numbers
+  // (supabase/004_theme_narrative.sql Part 2). No formula change — see
+  // lib/intelligence.ts's ThemeScoreResult comment.
+  investment_evidence_pct: number | null;
+  adoption_shift_delta: number | null;
   opportunity_score: number | null;
   opportunity_strength: AntennaOpportunityStrength | null;
   scoring_reason: string | null;
   scoring_version: string;
   computed_at: string;
+  // Chunk 3 — editorial narrative (supabase/004_theme_narrative.sql Part 1).
+  // Regenerated in place by scripts/generateThemeNarratives.ts, not by the
+  // daily pipeline. NULL means "not yet generated" — the UI must handle
+  // that as a normal, expected state, not an error. narrative_summary is a
+  // single sentence (Market Overview cards); narrative is the fuller
+  // editorial paragraph (theme detail page Layer 1) — same analysis, two
+  // lengths, written together.
+  narrative_summary: string | null;
+  narrative: string | null;
+  narrative_generated_at: string | null;
 };
 
 // Append-only history — one new row per theme every time the aggregation
 // step runs, so momentum/opportunity trend over time is queryable. Same
-// shape as ThemeScore; a separate table (not a `history` flag on
-// theme_scores) so "current state" and "history" stay cleanly separated at
-// the schema level and the current-state table never grows unbounded.
-export type ThemeScoreSnapshot = Omit<ThemeScore, "id"> & { id: number };
+// shape as ThemeScore MINUS narrative/narrative_generated_at — migration
+// 004 deliberately added those columns only to theme_scores (see that
+// file's header for why), so theme_score_snapshots never has them.
+export type ThemeScoreSnapshot = Omit<
+  ThemeScore,
+  "id" | "narrative_summary" | "narrative" | "narrative_generated_at"
+> & {
+  id: number;
+};
 
 // Foundations for the future email-gated report experience (Build Chunk 1,
 // Part D). No code writes to this table yet — capture form, auth, and

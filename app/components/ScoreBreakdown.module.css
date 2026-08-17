@@ -1,0 +1,57 @@
+.card {
+  padding: 28px;
+}
+
+.heading {
+  font-size: 18px;
+  margin-bottom: 20px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.row:first-child {
+  border-top: none;
+}
+
+.emphasis {
+  margin-top: 6px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 18px;
+}
+
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-ink-soft);
+}
+
+.emphasis .label {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+
+.value {
+  font-family: var(--font-headline);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-ink);
+}
+
+.emphasis .value {
+  font-size: 26px;
+  color: var(--color-gold);
+}

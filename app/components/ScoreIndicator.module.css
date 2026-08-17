@@ -1,0 +1,63 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-faint);
+}
+
+.value {
+  font-family: var(--font-headline);
+  font-size: 20px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.lg .value {
+  font-size: 32px;
+}
+
+.gold {
+  color: var(--color-gold);
+}
+
+.teal {
+  color: var(--color-teal);
+}
+
+.track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--color-border-soft);
+  overflow: hidden;
+}
+
+.lg .track {
+  height: 8px;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.fillGold {
+  background: var(--color-gold);
+}
+
+.fillTeal {
+  background: var(--color-teal);
+}

@@ -1,121 +1,117 @@
-import { getSupabase, type Company, type Signal } from "@/lib/supabase";
-// RunNowButton is intentionally not rendered here — research is now
-// operator/cron-only (see app/api/run-now/route.ts). The component itself
-// is left in place in case it's reused behind an operator-only surface
-// later, but it must not be wired into this public page. Do not re-add it
-// here without an auth story in front of it.
+// Public homepage — Chunk 3 (Market Intelligence Experience MVP). Replaces
+// the old operator dashboard that used to live at "/" (last run status +
+// raw signal list). That view is no longer reachable from the product; see
+// the Chunk 3 delivery report for why, and where it could resurface (e.g.
+// an /admin or /status route) if it's still wanted later. This route is the
+// first step of the Homepage → Market Overview → Theme Detail → Evidence →
+// Companies journey described in the brief.
+
+import { getSupabase, type ThemeScore } from "@/lib/supabase";
+import Header from "./components/Header";
+import ThemeCard from "./components/ThemeCard";
+import InfoTooltip from "./components/InfoTooltip";
+import EmailCapture from "./components/EmailCapture";
+import styles from "./home.module.css";
 
 export const dynamic = "force-dynamic";
-// force-dynamic alone forces this route to render on every request, but
-// doesn't stop individual fetch() calls made during that render (including
-// supabase-js's internal calls) from being served out of Next's Data Cache.
-// This forces every fetch in this route to bypass that cache and hit
-// Supabase fresh every time.
 export const fetchCache = "force-no-store";
 
-type SignalWithCompany = Signal & { company: Company };
-
-async function getData() {
+async function getTopThemes(): Promise<{ themes: ThemeScore[]; error: string | null }> {
   const supabase = getSupabase();
-  const errors: string[] = [];
-
-  const { data: lastRun, error: lastRunError } = await supabase
-    .from("runs")
+  const { data, error } = await supabase
+    .from("theme_scores")
     .select("*")
-    .order("started_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (lastRunError) {
-    console.error("Supabase error loading last run:", lastRunError);
-    errors.push(`runs: ${lastRunError.message}`);
+    .order("opportunity_score", { ascending: false, nullsFirst: false })
+    .limit(5);
+
+  if (error) {
+    console.error("Supabase error loading theme_scores:", error);
+    return { themes: [], error: error.message };
   }
 
-  const { data: signals, error: signalsError } = await supabase
-    .from("signals")
-    .select("*, company:companies(*)")
-    .order("created_at", { ascending: false })
-    .limit(100);
-  if (signalsError) {
-    console.error("Supabase error loading signals:", signalsError);
-    errors.push(`signals: ${signalsError.message}`);
-  }
-
-  const { count: companyCount, error: companyCountError } = await supabase
-    .from("companies")
-    .select("*", { count: "exact", head: true });
-  if (companyCountError) {
-    console.error("Supabase error loading company count:", companyCountError);
-    errors.push(`companies: ${companyCountError.message}`);
-  }
-
-  return {
-    lastRun,
-    signals: (signals ?? []) as unknown as SignalWithCompany[],
-    companyCount: companyCount ?? 0,
-    errors,
-  };
+  return { themes: (data ?? []) as ThemeScore[], error: null };
 }
 
 export default async function Home() {
-  const { lastRun, signals, companyCount, errors } = await getData();
+  const { themes, error } = await getTopThemes();
 
   return (
     <main>
-      <h1>Tech Spend Signal Monitor</h1>
-      <p className="subtitle">
-        Watching {companyCount} media &amp; entertainment companies for
-        public signals of future technology spending. Runs daily; emails a
-        digest of new signals.
-      </p>
+      <Header tagline="Media technology intelligence" />
 
-      {errors.length > 0 && (
+      <section className={styles.hero}>
+        <p className="eyebrow">Antenna</p>
+        <h1 className={styles.headline}>
+          Know where media technology investment is moving — before the market does.
+        </h1>
+        <p className={styles.subhead}>
+          Antenna evaluates public evidence of enterprise technology spend across the media
+          and entertainment industry — weighing how strong, how widespread, and how far along
+          each signal really is — to identify where investment is genuinely gaining ground.
+          It is not a news feed and it does not rank markets by how often they&apos;re mentioned.
+        </p>
+        <div className={styles.heroCapture}>
+          <EmailCapture source="homepage_hero" />
+        </div>
+      </section>
+
+      {error && (
         <div className="error-banner">
-          <strong>Supabase query error{errors.length > 1 ? "s" : ""}:</strong>
-          <ul>
-            {errors.map((message) => (
-              <li key={message}>{message}</li>
-            ))}
-          </ul>
+          <strong>Supabase query error:</strong> {error}
         </div>
       )}
 
-      <div className="status-bar">
-        <div className="stats">
-          {lastRun ? (
-            <>
-              Last run: {new Date(lastRun.started_at).toLocaleString()} &middot;{" "}
-              {lastRun.status} &middot; {lastRun.companies_processed}{" "}
-              companies &middot; {lastRun.signals_found} new signals
-            </>
-          ) : (
-            "No runs yet"
-          )}
+      <section className="section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">Market Overview</p>
+            <h2>Where investment is concentrating right now</h2>
+          </div>
         </div>
-      </div>
 
-      <div className="signal-list">
-        {signals.length === 0 && (
-          <div className="empty-state">
-            No signals found yet. Antenna&apos;s research run happens
-            automatically — check back after the next scheduled run.
-          </div>
+        <p className={styles.sectionSubhead}>
+          Ranked by Opportunity Score — a combined read on momentum, investment evidence, and
+          adoption. A theme with heavy activity but weak evidence of real spend will rank below
+          a quieter theme with stronger investment signals; that gap is the point.
+        </p>
+
+        <div className={styles.legend}>
+          <span>
+            <span className={`${styles.legendDot} ${styles.legendDotGold}`} />
+            Opportunity — momentum + investment evidence + adoption movement combined
+            <InfoTooltip text="A generic (non-personalised) read on how attractive a theme currently looks for a media technology supplier — combining Market Momentum with evidence of real investment activity and whether adoption is accelerating. Two themes with the same signal volume can have very different Opportunity Scores." />
+          </span>
+          <span>
+            <span className={`${styles.legendDot} ${styles.legendDotTeal}`} />
+            Momentum — volume and spread of market activity
+            <InfoTooltip text="How many organisations are active in a theme and how strong the underlying signals are. High momentum means a theme is being talked and acted on widely — it does not by itself mean the spend is real or committed yet." />
+          </span>
+        </div>
+
+        {themes.length === 0 && !error && (
+          <p className="empty-state">
+            No theme scores yet. Antenna&apos;s intelligence layer computes these after each
+            research run — check back after the next scheduled run.
+          </p>
         )}
-        {signals.map((signal) => (
-          <div className="signal-card" key={signal.id}>
-            <div className="company">{signal.company?.name}</div>
-            <div className="summary">{signal.summary}</div>
-            {signal.detail && <div className="detail">{signal.detail}</div>}
-            <div className="meta">
-              {signal.source_url && (
-                <a href={signal.source_url} target="_blank" rel="noreferrer">
-                  {signal.source_title || signal.source_url}
-                </a>
-              )}
-              {signal.published_date && ` · ${signal.published_date}`}
-            </div>
-          </div>
-        ))}
-      </div>
+
+        <div className={styles.grid}>
+          {themes.map((score) => (
+            <ThemeCard key={score.id} score={score} />
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.closing}>
+        <div className={`card ${styles.closingCard}`}>
+          <h2 className={styles.closingHeading}>Get early access</h2>
+          <p className={styles.closingBody}>
+            Antenna is in early development. Leave your email and we&apos;ll be in touch as the
+            product develops — no spam, no obligation.
+          </p>
+          <EmailCapture source="homepage_closing" />
+        </div>
+      </section>
     </main>
   );
 }

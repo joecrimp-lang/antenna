@@ -193,6 +193,15 @@ export type ThemeScoreResult = {
   signal_diversity: number;
   velocity_pct: number | null;
   momentum_score: number | null;
+  // Chunk 3 — persisting two intermediate values that calculateThemeScores
+  // already computed on the way to opportunity_score, but previously
+  // discarded once folded into that composite. No formula change: same
+  // numbers, same weights, same inputs (§14.3 of ANTENNA_SCORING_MODEL.md)
+  // — just also written to storage so the theme detail page's "why this
+  // score" breakdown can show real, non-fabricated component values rather
+  // than parsing them back out of scoring_reason's prose.
+  investment_evidence_pct: number | null;
+  adoption_shift_delta: number | null;
   opportunity_score: number | null;
   opportunity_strength: AntennaOpportunityStrength | null;
   scoring_reason: string;
@@ -237,6 +246,8 @@ export function calculateThemeScores(
         signal_diversity: 0,
         velocity_pct: null,
         momentum_score: null,
+        investment_evidence_pct: null,
+        adoption_shift_delta: null,
         opportunity_score: null,
         opportunity_strength: null,
         scoring_reason: `No qualifying signals in the last ${MOMENTUM_WINDOW_DAYS} days for this theme.`,
@@ -316,6 +327,8 @@ export function calculateThemeScores(
       signal_diversity,
       velocity_pct,
       momentum_score,
+      investment_evidence_pct: investmentEvidence,
+      adoption_shift_delta: adoptionShift - 50,
       opportunity_score,
       opportunity_strength,
       scoring_reason,

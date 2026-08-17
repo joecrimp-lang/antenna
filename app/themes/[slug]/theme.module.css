@@ -1,0 +1,56 @@
+.back {
+  display: inline-block;
+  margin-top: 40px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--color-ink);
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.title {
+  font-size: 34px;
+  margin-top: 8px;
+}
+
+.narrativeCard {
+  margin-top: 28px;
+  padding: 32px;
+}
+
+.scores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.narrative {
+  font-size: 16px;
+  line-height: 1.65;
+  color: var(--color-ink-soft);
+  max-width: 720px;
+}
+
+.sectionSubhead {
+  margin-top: -12px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: var(--color-ink-soft);
+}
+
+.evidenceList {
+  display: flex;
+  flex-direction: column;
+}

@@ -1,36 +1,155 @@
+/* Antenna — design tokens & base styles.
+   Plain CSS (no framework), consistent with how this app has always been
+   built. Component-specific styles live in CSS Modules next to each
+   component; this file holds shared tokens, resets, and typography only. */
+
+:root {
+  /* Color: a warm, editorial paper/ink pairing rather than a stark white
+     dashboard — closer to a printed intelligence briefing than a database
+     UI. Two accent channels (gold/teal) so Opportunity and Momentum are
+     always visually distinguishable from each other, never mixed up. */
+  --color-ink: #14171f;
+  --color-ink-soft: #4a4e5a;
+  --color-ink-faint: #8b8e98;
+  --color-paper: #f8f6f1;
+  --color-surface: #ffffff;
+  --color-border: #e6e1d4;
+  --color-border-soft: #efece2;
+
+  --color-gold: #b7862c;
+  --color-gold-soft: #f3e6c8;
+  --color-teal: #2c6e75;
+  --color-teal-soft: #dcebea;
+
+  --color-strong: #1f7a4d;
+  --color-strong-soft: #dcefe3;
+  --color-emerging: #b7862c;
+  --color-emerging-soft: #f3e6c8;
+  --color-limited: #8a8578;
+  --color-limited-soft: #ece9df;
+
+  --font-headline: var(--font-serif), Georgia, "Times New Roman", serif;
+  --font-body: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-card: 0 1px 2px rgba(20, 23, 31, 0.04), 0 8px 24px rgba(20, 23, 31, 0.05);
+
+  --content-width: 1080px;
+}
+
 * {
   box-sizing: border-box;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-  background: #fafafa;
-  color: #1a1a1a;
+  font-family: var(--font-body);
+  background: var(--color-paper);
+  color: var(--color-ink);
+  line-height: 1.5;
 }
 
 main {
-  max-width: 900px;
+  max-width: var(--content-width);
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 0 24px 96px;
 }
 
-h1 {
-  font-size: 22px;
-  margin-bottom: 4px;
+h1, h2, h3 {
+  font-family: var(--font-headline);
+  font-weight: 600;
+  line-height: 1.15;
+  margin: 0;
+  color: var(--color-ink);
+  letter-spacing: -0.01em;
 }
 
-.subtitle {
-  color: #666;
-  font-size: 14px;
+p {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: var(--font-body);
+}
+
+/* --- Shared layout primitives, used across the homepage and theme pages --- */
+
+.eyebrow {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-faint);
+}
+
+.section {
+  margin-top: 64px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+.section-heading h2 {
+  font-size: 24px;
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge--strong {
+  color: var(--color-strong);
+  background: var(--color-strong-soft);
+}
+
+.badge--emerging {
+  color: var(--color-emerging);
+  background: var(--color-emerging-soft);
+}
+
+.badge--limited {
+  color: var(--color-limited);
+  background: var(--color-limited-soft);
 }
 
 .error-banner {
   background: #fdecea;
   border: 1px solid #f5c2c0;
   color: #7a1f1a;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px 16px;
   margin-bottom: 24px;
   font-size: 14px;
@@ -41,82 +160,15 @@ h1 {
   padding-left: 20px;
 }
 
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  padding: 14px 16px;
-  margin-bottom: 24px;
-  font-size: 14px;
-}
-
-.status-bar .stats {
-  color: #444;
-}
-
-button {
-  background: #111;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 14px;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.signal-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.signal-card {
-  background: #fff;
-  border: 1px solid #e5e5e5;
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.signal-card .company {
-  font-weight: 600;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: #555;
-}
-
-.signal-card .summary {
-  margin: 6px 0;
-  font-size: 15px;
-}
-
-.signal-card .detail {
-  font-size: 14px;
-  color: #444;
-}
-
-.signal-card .meta {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #888;
-}
-
-.signal-card .meta a {
-  color: #0645ad;
-}
-
 .empty-state {
-  color: #666;
+  color: var(--color-ink-soft);
   font-size: 14px;
   padding: 40px 0;
   text-align: center;
+}
+
+@media (max-width: 640px) {
+  main {
+    padding: 0 16px 64px;
+  }
 }
