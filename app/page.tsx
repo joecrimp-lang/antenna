@@ -1,5 +1,9 @@
 import { getSupabase, type Company, type Signal } from "@/lib/supabase";
-import RunNowButton from "./components/RunNowButton";
+// RunNowButton is intentionally not rendered here — research is now
+// operator/cron-only (see app/api/run-now/route.ts). The component itself
+// is left in place in case it's reused behind an operator-only surface
+// later, but it must not be wired into this public page. Do not re-add it
+// here without an auth story in front of it.
 
 export const dynamic = "force-dynamic";
 // force-dynamic alone forces this route to render on every request, but
@@ -87,14 +91,13 @@ export default async function Home() {
             "No runs yet"
           )}
         </div>
-        <RunNowButton />
       </div>
 
       <div className="signal-list">
         {signals.length === 0 && (
           <div className="empty-state">
-            No signals found yet. Click &quot;Run now&quot; to kick off the
-            first research run.
+            No signals found yet. Antenna&apos;s research run happens
+            automatically — check back after the next scheduled run.
           </div>
         )}
         {signals.map((signal) => (

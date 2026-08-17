@@ -6,34 +6,52 @@ AI/cloud initiatives, vendor deals, tech hiring pushes, RFPs, tech
 acquisitions, etc). Runs once a day, stores findings in Supabase, and emails
 a digest of anything new via Resend.
 
-This is intentionally crude: one dashboard page, one cron job, no auth, no
-user accounts, no editing of the company list from the UI.
+This is intentionally crude: one dashboard page, one cron job, no auth
+system (though the research trigger is now protected — see "Security"
+below), no user accounts, no editing of the company list from the UI.
+
+As of Build Chunk 1, each stored signal also carries Antenna Intelligence
+v0.1 classification (theme, signal type, confidence/intent scores). See
+`ANTENNA_SCORING_MODEL.md` for the full methodology, taxonomy, and exact
+prompt — not duplicated in this file.
 
 ## How it works
 
-1. Vercel Cron hits `/api/cron/research` once a day (or you trigger a run
-   manually from the dashboard's "Run now" button).
+1. Vercel Cron hits `/api/cron/research` once a day. There is no public
+   "Run now" button anymore — research is operator/cron-only (see
+   "Security" below); the equivalent manual trigger is
+   `POST /api/run-now`, callable directly (e.g. via curl) by an operator
+   with `ADMIN_RUN_SECRET`.
 2. That request creates one row in the `runs` table, then processes all 50
    companies (or fewer — see `RESEARCH_COMPANY_LIMIT` below) **within that
    same request**, in concurrent groups of `CONCURRENCY` (2) rather than one
    at a time or split across separate background invocations — see
    "Batching history" below for why. For each company, it asks OpenAI
-   (Responses API, with the `web_search_preview` tool) to search the web and
+   (Responses API, with the `web_search_preview` tool) to search the web,
    return at most 2 new, sourced signals of future tech spending as JSON,
-   capped at 1200 output tokens per company.
-3. New signals are stored in Supabase (`signals` table); duplicates (same
-   company + source URL) are skipped automatically. One company failing
-   (OpenAI error, bad response, etc.) doesn't stop the others in its group
-   or any later group — its error is recorded on the run and processing
-   continues.
+   and classify each one per the Antenna Intelligence Scoring Model
+   (same call — no second OpenAI request), capped at 2000 output tokens per
+   company.
+3. New signals are stored in Supabase (`signals` table), including their
+   classification fields; duplicates (same company + source URL) are
+   skipped automatically. One company failing (OpenAI error, bad response,
+   etc.) doesn't stop the others in its group or any later group — its
+   error is recorded on the run and processing continues.
 4. Once every company is done, any signal that hasn't been emailed yet gets
    sent in one digest email via Resend, then marked as emailed. The run row
    is marked `completed` or `completed_with_errors`.
-5. The dashboard (`/`) shows the most recent 100 signals, the latest run's
-   status, and a "Run now" button. Clicking it waits for the whole run to
-   finish (this can take a couple of minutes) and then shows the real
-   result — how many companies were processed and how many new signals were
-   found.
+5. The dashboard (`/`) shows the most recent 100 signals and the latest
+   run's status — read-only, no research trigger.
+
+## Security
+
+`POST /api/run-now` requires `Authorization: Bearer <ADMIN_RUN_SECRET>` and
+fails closed (401) if that env var isn't set, in every environment.
+`GET /api/cron/research` requires `CRON_SECRET` on any Vercel deployment
+(preview or production) — a missing secret there now rejects every request
+rather than allowing unauthenticated execution; only pure local dev
+tolerates it being unset. Neither secret is ever exposed to the browser.
+See `ANTENNA_SCORING_MODEL.md` §1 for the full reasoning.
 
 ### Batching history (why it's a single request, not chained batches)
 
@@ -102,10 +120,12 @@ execution.
    `tools` array, check the current API reference at
    https://developers.openai.com/api/docs/guides/tools-web-search and the
    installed SDK's TypeScript types for the accepted value.
-4. Each research call is capped at `max_output_tokens: 1200` and the prompt
-   asks for at most 2 findings per company (also enforced in code as a
-   belt-and-suspenders `slice(0, 2)` in `lib/research.ts`), to keep both
-   cost and latency down per company. Raised from an initial 500 after a
+4. Each research call is capped at `max_output_tokens: 2000` (raised from
+   1200 in Build Chunk 1 alongside the Antenna Intelligence classification
+   fields — see `ANTENNA_SCORING_MODEL.md`) and the prompt asks for at most
+   2 findings per company (also enforced in code as a belt-and-suspenders
+   `slice(0, 2)` in `lib/research.ts`), to keep both cost and latency down
+   per company. The cap was first raised from an initial 500 after a
    5-company pilot showed the lower cap was likely truncating the model's
    output before it could finish searching and respond — see "Recall tuning"
    below.
@@ -179,25 +199,35 @@ in your Vercel project's Environment Variables for production:
   explicitly
 - `CRON_SECRET` — generate with `openssl rand -hex 32`. Vercel automatically
   sends this as a bearer token to your cron route once it's set as an env
-  var, which is what authenticates the daily job.
+  var, which is what authenticates the daily job. **As of Build Chunk 1,
+  this is effectively required on any Vercel deployment** — the cron route
+  fails closed (401) if it's unset there.
+- `ADMIN_RUN_SECRET` — new in Build Chunk 1, generate the same way. Required
+  in every environment to call `POST /api/run-now`; that endpoint fails
+  closed if it's unset.
 
 ### 5. Deploy
 
 1. Push this repo to GitHub and import it into Vercel, or run `vercel` from
    this directory.
 2. Add the environment variables above in the Vercel project settings.
-3. The `vercel.json` cron (`0 8 * * *`, i.e. daily at 08:00 UTC) is picked
+3. Run `supabase/schema.sql` then `supabase/002_antenna_intelligence_v0.1.sql`
+   in the Supabase SQL editor (in that order) if you haven't already.
+4. The `vercel.json` cron (`0 8 * * *`, i.e. daily at 08:00 UTC) is picked
    up automatically on deploy.
-4. Visit the deployed URL, click "Run now" once to confirm everything is
-   wired up correctly. It'll take a minute or two (50 companies at 5-way
-   concurrency) and then show the real result — companies processed and new
-   signals found.
+5. To confirm everything is wired up correctly, trigger a run as the
+   operator: `curl -X POST https://your-deployment-url/api/run-now -H "Authorization: Bearer <ADMIN_RUN_SECRET>"`.
+   There is no public UI button for this anymore (see "Security"). It'll
+   take a minute or two and return a JSON summary — companies processed and
+   new signals found.
 
 ## Notes / known limitations (by design, for an MVP)
 
-- No authentication on the dashboard or the `/api/run-now` endpoint. Anyone
-  with the URL can view signals or trigger a run (which costs OpenAI
-  usage). Fine for a private tool; add auth before sharing the URL widely.
+- `POST /api/run-now` and `GET /api/cron/research` are protected by shared
+  secrets (`ADMIN_RUN_SECRET`, `CRON_SECRET`), not a real auth/login system
+  — appropriate for a single-operator tool, not for a multi-person team.
+  The dashboard itself (`/`) remains public and read-only, with no way to
+  trigger research from it.
 - The 50-company list is fixed via the seed SQL. To change it, edit
   `supabase/schema.sql` and update the `companies` table directly.
 - No retry/backoff logic — if OpenAI or Resend has a transient failure for
@@ -205,10 +235,10 @@ in your Vercel project's Environment Variables for production:
   processing continues with the rest.
 - Digest emails aren't batched by frequency — every unsent signal at the
   time a run finishes goes into that run's one email.
-- No protection against overlapping runs — clicking "Run now" while the
-  daily cron (or another manual run) is already in progress starts a second
-  `runs` row that processes independently. Not addressed here; low-stakes
-  for a single-user tool, but worth knowing.
+- No protection against overlapping runs — the daily cron firing while an
+  operator's manual run is already in progress starts a second `runs` row
+  that processes independently. Not addressed here; low-stakes for a
+  single-operator tool, but worth knowing.
 - A company whose OpenAI call runs past `PER_COMPANY_TIMEOUT_MS` (25s, in
   `lib/research.ts`) is recorded as a per-company failure (its error goes on
   the run) and processing moves on — same as any other per-company error,
@@ -222,10 +252,15 @@ in your Vercel project's Environment Variables for production:
   problem yet, but the safety margin this ceiling used to provide at
   concurrency 5 no longer holds at concurrency 2 — worth keeping an eye on
   if timeouts start showing up on real runs.
-- Each company is capped at 2 findings and 1200 output tokens per OpenAI
+- Each company is capped at 2 findings and 2000 output tokens per OpenAI
   call, to keep cost and latency down. The finding cap is a hard cap on
   breadth, not just a formatting preference — a company with more than 2
   genuinely distinct signals in a given run will only surface its top 2.
+- Each stored finding now also carries Antenna Intelligence v0.1
+  classification (theme, signal type, confidence/intent scores, rationale)
+  — see `ANTENNA_SCORING_MODEL.md` for the full methodology. There is no
+  company-level or theme-level aggregate score yet; only per-signal scoring
+  exists.
 - The exact cost of a full run hasn't been measured yet on the current
   model/config — use `RESEARCH_COMPANY_LIMIT` (and `RESEARCH_COMPANY_OFFSET`
   to pilot a different slice of the watchlist) to pilot on a handful of

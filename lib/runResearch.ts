@@ -1,6 +1,7 @@
 import { getSupabase, type Company } from "./supabase";
 import { researchCompany } from "./research";
 import { sendDigestEmail, type DigestItem } from "./email";
+import { SCORING_VERSION } from "./antennaTaxonomy";
 
 // Companies are processed in concurrent groups rather than one at a time so
 // the whole watchlist finishes within a single Vercel function invocation
@@ -45,6 +46,22 @@ async function processCompany(supabase: SupabaseClient, company: Company) {
         source_url: finding.source_url,
         source_title: finding.source_title,
         published_date: finding.published_date,
+        // Antenna Intelligence v0.1 classification. theme/signal_type/scores
+        // are null when the model's output couldn't be validated against
+        // the canonical taxonomy — the row is still stored (see research.ts)
+        // rather than dropped. scoring_version is set here (not by the
+        // model) so it's always exactly right, never a typo the model made.
+        theme: finding.theme,
+        signal_type: finding.signal_type,
+        confidence_score: finding.confidence_score,
+        intent_score: finding.intent_score,
+        scoring_version: SCORING_VERSION,
+        classification_reason: finding.classification_reason,
+        confirmed_spend_amount: finding.confirmed_spend_amount,
+        confirmed_spend_currency: finding.confirmed_spend_currency,
+        // estimated_opportunity_* and opportunity_strength intentionally
+        // omitted — no approved methodology yet, so they stay NULL (see
+        // ANTENNA_SCORING_MODEL.md).
       });
       // Unique constraint on (company_id, source_url) means duplicates are
       // silently skipped rather than treated as an error.
