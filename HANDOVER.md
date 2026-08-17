@@ -19,10 +19,13 @@ app/
 lib/
   supabase.ts                     — Supabase client factory + shared types (Signal, Company, Subscriber, DailyReport, ThemeScore, ThemeScoreSnapshot)
   antennaTaxonomy.ts              — canonical theme/signal_type/opportunity-strength lists + scoring version (single source of truth)
-  research.ts                     — OpenAI call + prompt + Antenna Intelligence classification/validation for one company
+  research.ts                     — OpenAI call + prompt for one company; validation logic now imported from classificationValidation.ts (see below)
+  classificationValidation.ts     — Antenna Intelligence v0.1 validation/normalization helpers, extracted from research.ts so the backfill script can reuse them (output-preserving refactor — see file header)
   intelligence.ts                 — Antenna Intelligence Layer v0.2: Signal Intent Score, Market Momentum Score, Opportunity Score (no OpenAI calls — pure derivation over already-classified signals)
   runResearch.ts                  — orchestrates a full run across companies, then the theme-intelligence aggregation step
   email.ts                        — Resend digest email
+scripts/
+  backfillIntelligence.ts         — one-off, local-only historical backfill (classification + Signal Intent Score for pre-v0.2 signals) — see "Historical backfill" below
 supabase/schema.sql                          — original table definitions + seed data (50 companies)
 supabase/002_antenna_intelligence_v0.1.sql   — Build Chunk 1 additive migration (classification columns, subscribers, daily_reports)
 supabase/003_antenna_intelligence_v0.2.sql   — Intelligence layer additive migration (signal_intent_score + theme_scores/theme_score_snapshots)
@@ -31,7 +34,8 @@ vercel.json                       — cron schedule config
 README.md                         — detailed running history/decisions log
 HANDOVER.md                       — this document
 ANTENNA_SCORING_MODEL.md          — Antenna Intelligence Scoring Model reference: v0.1 classification (taxonomy, bands, exact prompt) and v0.2 intelligence layer (§14: Signal Intent/Momentum/Opportunity formulas)
-ANTENNA_INTELLIGENCE_LAYER_V0.2_PROPOSAL.md — the proposal document this chunk was built against; kept as the historical decision record
+ANTENNA_INTELLIGENCE_LAYER_V0.2_PROPOSAL.md — the intelligence-layer proposal document; kept as the historical decision record
+ANTENNA_BACKFILL_PROPOSAL.md      — the historical-backfill proposal document; kept as the historical decision record
 package.json / tsconfig.json / next.config.js / next-env.d.ts
 ```
 
@@ -81,6 +85,28 @@ Seven tables as of the intelligence-layer chunk (three original + two Build Chun
 Full detail — exact confidence/intent bands, the complete current prompt, validation rules, known weaknesses, and the pending methodology proposals — lives in **`ANTENNA_SCORING_MODEL.md`**, not duplicated here to avoid the two documents drifting out of sync.
 
 Model: `gpt-5.6-luna` by default (overridable via `OPENAI_MODEL`) — chosen for cost after the flagship tier (`gpt-5.6`, "Sol") proved too slow/expensive; no weighting between model tiers, it's a single flat choice; not separately validated for classification-quality against a stronger model. There is also a hard code-level cap (`.slice(0, 2)`) enforcing the 2-finding limit regardless of what the model returns.
+
+## Historical backfill
+
+Two chunks in (Build Chunk 1 adding classification, then the intelligence layer adding `signal_intent_score`), older signals are missing fields that only exist going forward — the live pipeline never recomputes historical rows. `scripts/backfillIntelligence.ts` is a **one-off, local-only script** (not deployed, not on a cron, no new API route) that fills these in. Full proposal/decision record: `ANTENNA_BACKFILL_PROPOSAL.md`.
+
+**Two groups, handled differently:**
+- **Group A** (`theme is null` — predates Build Chunk 1 entirely): needs an OpenAI classification-only call (no web search — the finding is already recorded, it just needs classifying) using a prompt that reproduces `lib/research.ts`'s classification instructions **verbatim but duplicated**, not shared (see that script's header comment for why — briefly, restructuring `research.ts`'s prompt construction to share the text carried more risk of subtly changing the live, already-carefully-tuned prompt than duplicating ~40 lines of prose once). If `research.ts`'s classification wording changes again, this copy needs updating by hand.
+- **Group B** (`theme is not null and signal_intent_score is null` — classified under Build Chunk 1, predates the intelligence layer): Signal Intent Score only, computed via the exact same `computeSignalIntentScore()` the live pipeline uses (imported, not duplicated) — no OpenAI call, no cost.
+
+The validation/normalization logic Group A needs (matching theme/signal_type against the canonical taxonomy, clamping scores, etc.) **is shared, not duplicated** — it was extracted from `research.ts` into `lib/classificationValidation.ts` as a pure, output-preserving refactor (moved function bodies, `research.ts` now imports them; the live prompt/model/timeout/token-cap were not touched). Both `research.ts` and the backfill script call the identical functions, so there's no risk of the two ever validating differently.
+
+After both groups finish, the script calls `computeAndStoreThemeScores()` (the same function the daily pipeline calls) once, so `theme_scores`/`theme_score_snapshots` reflect the now-larger classified corpus — this does add one extra snapshot row set outside the normal daily cadence, which is expected (the corpus materially changed).
+
+**Run it:**
+```
+set -a; source .env.local; set +a
+npx tsx scripts/backfillIntelligence.ts --dry-run   # counts + cost estimate, no writes
+npx tsx scripts/backfillIntelligence.ts             # the real thing
+```
+`--limit=N` / `--offset=N` cap/skip rows per group, for testing on a small slice first. Safe to re-run — every query filters on current null-state, so anything already backfilled is skipped automatically; if interrupted, just run it again. Prints per-row progress and a final summary (rows processed/classified/scored/failed per group, OpenAI token usage, an estimated cost, and every error).
+
+**Not yet run as of this writing** — this environment has no live database or OpenAI access, so it's been verified by type-checking and a full runtime pass against stubbed Supabase/OpenAI clients (confirmed: Group A classification → validation → Signal Intent Score → update; Group B scoring; theme recalculation — all execute correctly), not against production data. Run it once, review the summary, and keep it around in case new historical gaps ever appear (e.g. from a future methodology version bump).
 
 ## How companies are selected for each run
 
