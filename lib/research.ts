@@ -43,8 +43,19 @@ function getOpenAI() {
 // can't keep an entire concurrency group (and thus the whole run) alive
 // indefinitely. maxRetries is set to 0 so the SDK doesn't silently retry
 // past this budget on its own — a timeout here is just a per-company
-// failure, caught and recorded by the caller like any other error.
-const PER_COMPANY_TIMEOUT_MS = 25_000;
+// failure, caught and recorded by the caller like any other error (and, as
+// of Phase 2A, retried once — see lib/runResearch.ts's MAX_ATTEMPTS).
+//
+// Phase 2A (stabilisation) tuning: raised from 25s to 30s after the
+// controlled buyer test timed out on 3/5 companies (Netflix, Warner Bros.
+// Discovery, Paramount) — larger, higher-news-volume companies plus
+// ordinary API/tool latency variance. This is the same kind of operational
+// tuning CONCURRENCY has already been through (5 -> 2, documented in
+// README.md), not a change to the research prompt or methodology. Paired
+// with the one-retry policy in lib/runResearch.ts, the new worst-case time
+// per company is (30s + 1.5s backoff + 30s) = 61.5s — see that file's
+// comment for what this means for safe batch sizes at CONCURRENCY=2.
+const PER_COMPANY_TIMEOUT_MS = 30_000;
 
 // Raised from 1200 to 2000 alongside the Antenna Intelligence classification
 // fields added below (Build Chunk 1) — the per-finding JSON payload roughly
@@ -109,7 +120,18 @@ Respond with ONLY a JSON array (no markdown fences, no commentary before or afte
 
 If you find nothing relevant, respond with exactly: []`;
 
-export async function researchCompany(company: Company): Promise<ResearchFinding[]> {
+// Phase 2A (observability) addition — token usage alongside findings, so a
+// research run can report real cost per organisation (Phase 4/5 of the
+// brief) instead of an unmeasured guess. Purely additive: the prompt, the
+// OpenAI call, the parsing/validation logic, and the returned findings
+// themselves are byte-identical to before this change — only the return
+// shape grew a second field.
+export type ResearchCompanyResult = {
+  findings: ResearchFinding[];
+  usage: { inputTokens: number; outputTokens: number };
+};
+
+export async function researchCompany(company: Company): Promise<ResearchCompanyResult> {
   const client = getOpenAI();
   const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
 
@@ -123,11 +145,17 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
     { timeout: PER_COMPANY_TIMEOUT_MS, maxRetries: 0 }
   );
 
+  const responseUsage = (response as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+  const usage = {
+    inputTokens: responseUsage?.input_tokens ?? 0,
+    outputTokens: responseUsage?.output_tokens ?? 0,
+  };
+
   const text = (response as { output_text?: string }).output_text ?? "";
   const parsed = extractJsonArray(text);
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) return { findings: [], usage };
 
-  return parsed
+  const findings = parsed
     .filter(
       (item): item is Record<string, unknown> =>
         typeof item === "object" && item !== null
@@ -144,4 +172,6 @@ export async function researchCompany(company: Company): Promise<ResearchFinding
     // underlying signal — same bar as before (summary + source_url).
     .filter((f) => f.summary && f.source_url)
     .slice(0, 2);
+
+  return { findings, usage };
 }

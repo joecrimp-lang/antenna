@@ -22,12 +22,27 @@ export function getSupabase() {
   });
 }
 
+// Phase 2A — organisation model (supabase/005_organisation_model.sql).
+// Additive, all-nullable-or-defaulted, so every pre-existing row keeps
+// working: organisation_type/priority are null until explicitly classified
+// (see scripts/importOrganisationUniverse.ts), research_enabled defaults
+// true at the database level so nothing already running was silently
+// paused by the migration alone.
+export type AntennaOrganisationType = "buyer" | "vendor" | "platform" | "technology_provider";
+export type AntennaPriority = "high" | "medium" | "low";
+
 export type Company = {
   id: number;
   rank: number;
   name: string;
   website: string | null;
   country: string | null;
+  organisation_type: AntennaOrganisationType | null;
+  priority: AntennaPriority | null;
+  research_enabled: boolean;
+  // Documentation only — why research_enabled is set the way it is. Never
+  // read by any query or filter; see 005_organisation_model.sql's header.
+  research_scope_note: string | null;
 };
 
 export type Signal = {
@@ -150,4 +165,54 @@ export type DailyReport = {
   scoring_version: string | null;
   report_data: Record<string, unknown>;
   status: string;
+};
+
+// One row per research run — pre-existing table, not previously typed here
+// (accessed with an implicit `any` everywhere before now). Phase 2A
+// (supabase/006_observability.sql) adds the five aggregate columns below;
+// everything above them already existed.
+export type Run = {
+  id: number;
+  started_at: string;
+  finished_at: string | null;
+  status: string;
+  companies_processed: number;
+  signals_found: number;
+  error: string | null;
+  // Phase 2A additions — the aggregate view over research_run_attempts
+  // (below) for this run. Null on any run that predates this migration.
+  organisations_attempted: number | null;
+  duplicates_prevented: number | null;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  avg_duration_ms: number | null;
+};
+
+// Phase 2A — one row per organisation per research run
+// (supabase/006_observability.sql). The detail view underneath `Run`'s
+// aggregate columns: answers "what happened to company X during run Y"
+// without parsing runs.error's free-text blob. Internal/observability data
+// only — no UI reads this table (see ANTENNA_PHASE2A delivery report,
+// Phase 5).
+export type ResearchRunAttemptStatus = "success" | "no_new_signals" | "failed";
+
+export type ResearchRunAttempt = {
+  id: number;
+  run_id: number;
+  company_id: number;
+  company_name: string;
+  status: ResearchRunAttemptStatus;
+  signals_created: number;
+  duplicates_prevented: number;
+  error_message: string | null;
+  started_at: string;
+  finished_at: string;
+  duration_ms: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  // Phase 2A stabilisation (supabase/007_research_run_stabilisation.sql) —
+  // 0 if the company succeeded on the first attempt, 1 if it needed the
+  // single retry lib/runResearch.ts now applies before giving up.
+  retry_count: number;
+  created_at: string;
 };
