@@ -1,14 +1,22 @@
-// Public homepage — Chunk 3 (Market Intelligence Experience MVP). Replaces
-// the old operator dashboard that used to live at "/" (last run status +
-// raw signal list). That view is no longer reachable from the product; see
-// the Chunk 3 delivery report for why, and where it could resurface (e.g.
-// an /admin or /status route) if it's still wanted later. This route is the
-// first step of the Homepage → Market Overview → Theme Detail → Evidence →
-// Companies journey described in the brief.
+// Public homepage. This route is the first step of the Homepage -> Market
+// Overview -> Theme Detail -> Evidence -> Organisation journey.
+//
+// Phase 3B.2 ("Product Polish & Trust Layer") tightens the hero per the
+// decision doc §4: "the proposition is strong but the current hero area is
+// too wordy." The rewritten copy leads with what Antenna is, why it
+// matters, and what's explorable, in three short lines instead of one
+// dense paragraph, and mentions the "Antenna" name once rather than
+// repeating it through the hero. A visual divider now separates the hero
+// from Market Overview (decision doc: "create clearer separation between
+// brand/proposition, market overview, theme intelligence"). No em dashes
+// anywhere in this file's copy, per the decision doc §2.
 
 import { getSupabase, type ThemeScore } from "@/lib/supabase";
+import type { AntennaTheme } from "@/lib/antennaTaxonomy";
+import { companyToSlug } from "@/lib/companySlug";
+import { SCORE_COPY } from "@/lib/copy";
 import Header from "./components/Header";
-import ThemeCard from "./components/ThemeCard";
+import ThemeCard, { type LeadingOrganisation } from "./components/ThemeCard";
 import InfoTooltip from "./components/InfoTooltip";
 import EmailCapture from "./components/EmailCapture";
 import styles from "./home.module.css";
@@ -32,8 +40,52 @@ async function getTopThemes(): Promise<{ themes: ThemeScore[]; error: string | n
   return { themes: (data ?? []) as ThemeScore[], error: null };
 }
 
+// "Leading activity": which organisations are actually driving each theme,
+// not how many. One query across every theme shown on the homepage,
+// ordered by signal_intent_score (the strongest, best-evidenced activity
+// first) so the first few distinct company names seen per theme are the
+// most representative ones. Same underlying data the theme detail page
+// already reads, no new table, no new scoring.
+const LEADING_ORGS_PER_THEME = 4;
+const LEADING_ORGS_QUERY_LIMIT = 500; // defensive cap, not a real limit at this project's scale
+
+async function getLeadingOrganisations(
+  themes: AntennaTheme[]
+): Promise<Map<AntennaTheme, LeadingOrganisation[]>> {
+  const result = new Map<AntennaTheme, LeadingOrganisation[]>();
+  if (themes.length === 0) return result;
+
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("signals")
+    .select("theme, company:companies(name)")
+    .in("theme", themes as string[])
+    .order("signal_intent_score", { ascending: false, nullsFirst: false })
+    .limit(LEADING_ORGS_QUERY_LIMIT);
+
+  if (error || !data) {
+    console.error("Supabase error loading leading organisations:", error);
+    return result;
+  }
+
+  for (const row of data as unknown as {
+    theme: AntennaTheme | null;
+    company: { name: string } | null;
+  }[]) {
+    if (!row.theme || !row.company?.name) continue;
+    const list = result.get(row.theme) ?? [];
+    if (list.length >= LEADING_ORGS_PER_THEME) continue;
+    if (list.some((o) => o.name === row.company!.name)) continue;
+    list.push({ name: row.company.name, slug: companyToSlug(row.company.name) });
+    result.set(row.theme, list);
+  }
+
+  return result;
+}
+
 export default async function Home() {
   const { themes, error } = await getTopThemes();
+  const leadingOrgsByTheme = await getLeadingOrganisations(themes.map((t) => t.theme));
 
   return (
     <main>
@@ -41,19 +93,17 @@ export default async function Home() {
 
       <section className={styles.hero}>
         <p className="eyebrow">Antenna</p>
-        <h1 className={styles.headline}>
-          Know where media technology investment is moving — before the market does.
-        </h1>
+        <h1 className={styles.headline}>Know where media technology investment is moving.</h1>
         <p className={styles.subhead}>
-          Antenna evaluates public evidence of enterprise technology spend across the media
-          and entertainment industry — weighing how strong, how widespread, and how far along
-          each signal really is — to identify where investment is genuinely gaining ground.
-          It is not a news feed and it does not rank markets by how often they&apos;re mentioned.
+          Real evidence of technology spend across media and entertainment: expenditure,
+          procurement, hiring and partnerships, not headlines or hype.
         </p>
         <div className={styles.heroCapture}>
           <EmailCapture source="homepage_hero" />
         </div>
       </section>
+
+      <div className={styles.heroDivider} />
 
       {error && (
         <div className="error-banner">
@@ -70,34 +120,40 @@ export default async function Home() {
         </div>
 
         <p className={styles.sectionSubhead}>
-          Ranked by Opportunity Score — a combined read on momentum, investment evidence, and
-          adoption. A theme with heavy activity but weak evidence of real spend will rank below
-          a quieter theme with stronger investment signals; that gap is the point.
+          Ranked by Opportunity Score: a combined read on momentum, investment evidence and
+          adoption. A theme with heavy activity but weak evidence of real spend ranks below a
+          quieter theme with stronger investment signals, and that gap is the point. Each card
+          opens with a Market Signal, our read on what&apos;s happening, ahead of the scores
+          behind it.
         </p>
 
         <div className={styles.legend}>
           <span>
             <span className={`${styles.legendDot} ${styles.legendDotGold}`} />
-            Opportunity — momentum + investment evidence + adoption movement combined
-            <InfoTooltip text="A generic (non-personalised) read on how attractive a theme currently looks for a media technology supplier — combining Market Momentum with evidence of real investment activity and whether adoption is accelerating. Two themes with the same signal volume can have very different Opportunity Scores." />
+            {SCORE_COPY.opportunity.label}: {SCORE_COPY.opportunity.short}
+            <InfoTooltip text={SCORE_COPY.opportunity.tooltip} />
           </span>
           <span>
             <span className={`${styles.legendDot} ${styles.legendDotTeal}`} />
-            Momentum — volume and spread of market activity
-            <InfoTooltip text="How many organisations are active in a theme and how strong the underlying signals are. High momentum means a theme is being talked and acted on widely — it does not by itself mean the spend is real or committed yet." />
+            {SCORE_COPY.momentum.label}: {SCORE_COPY.momentum.short}
+            <InfoTooltip text={SCORE_COPY.momentum.tooltip} />
           </span>
         </div>
 
         {themes.length === 0 && !error && (
           <p className="empty-state">
-            No theme scores yet. Antenna&apos;s intelligence layer computes these after each
-            research run — check back after the next scheduled run.
+            No theme scores yet. Our intelligence layer computes these after each research run.
+            Check back after the next scheduled run.
           </p>
         )}
 
         <div className={styles.grid}>
           {themes.map((score) => (
-            <ThemeCard key={score.id} score={score} />
+            <ThemeCard
+              key={score.id}
+              score={score}
+              leadingOrganisations={leadingOrgsByTheme.get(score.theme) ?? []}
+            />
           ))}
         </div>
       </section>
@@ -106,8 +162,8 @@ export default async function Home() {
         <div className={`card ${styles.closingCard}`}>
           <h2 className={styles.closingHeading}>Get early access</h2>
           <p className={styles.closingBody}>
-            Antenna is in early development. Leave your email and we&apos;ll be in touch as the
-            product develops — no spam, no obligation.
+            We&apos;re in early development. Leave your details and we&apos;ll be in touch as the
+            product develops. No spam, no obligation.
           </p>
           <EmailCapture source="homepage_closing" />
         </div>

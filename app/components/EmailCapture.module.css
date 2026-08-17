@@ -1,8 +1,23 @@
 .form {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
   flex-wrap: wrap;
   gap: 10px;
   align-items: flex-start;
+}
+
+/* Phase 3B.2: company/job title are optional context, deliberately smaller
+   and lower-contrast than the primary email row so the form still reads
+   as "just leave your email" at a glance. */
+.optionalRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .input {
@@ -16,6 +31,21 @@
 }
 
 .input:focus {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 1px;
+}
+
+.optionalInput {
+  flex: 1 1 160px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  background: var(--color-surface);
+  color: var(--color-ink-soft);
+}
+
+.optionalInput:focus {
   outline: 2px solid var(--color-gold);
   outline-offset: 1px;
 }

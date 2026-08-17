@@ -1,0 +1,42 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Phase 3B.2 — stronger visual treatment: bigger, bolder, a real border
+   (not just a tinted background) so Market Signal reads as the headline
+   element it is, not a minor status chip. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 14px;
+  border: 1.5px solid currentColor;
+  cursor: default;
+}
+
+.lg .badge {
+  font-size: 14.5px;
+  padding: 7px 16px;
+}
+
+.icon {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.lg .icon {
+  font-size: 17px;
+}
+
+.meaning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  color: var(--color-ink-soft);
+}

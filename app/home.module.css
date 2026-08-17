@@ -21,6 +21,15 @@
   max-width: 440px;
 }
 
+/* Phase 3B.2 (decision doc §4/§3): "create clearer separation between
+   brand/proposition, market overview, theme intelligence." A plain
+   horizontal rule reads as a deliberate section break without adding
+   another card or heading weight between the hero and Market Overview. */
+.heroDivider {
+  margin-top: 48px;
+  border-top: 1px solid var(--color-border);
+}
+
 .sectionSubhead {
   margin-top: -12px;
   margin-bottom: 28px;

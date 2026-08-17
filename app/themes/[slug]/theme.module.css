@@ -24,23 +24,82 @@
   margin-top: 8px;
 }
 
-.narrativeCard {
-  margin-top: 28px;
-  padding: 32px;
+/* "What this means": fixed, plain-English theme definition, part of the
+   page-identity layer alongside the title. */
+.definition {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-ink-soft);
+  max-width: 720px;
+}
+
+/* Phase 3B.2 — interpretation layer: Market Signal and Antenna View as two
+   distinct cards (decision doc §5: "separate visually"), not one blended
+   block, each carrying its own small "what question does this answer"
+   label so the journey (what should I take away, why does Antenna think
+   this) reads before the content itself. */
+.interpretationStack {
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.layerLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-faint);
+  margin-bottom: 10px;
+}
+
+.signalCard {
+  padding: 22px 28px;
+  border-top: 4px solid var(--color-border);
+}
+
+/* Antenna View is the single most valuable piece of copy on the page
+   (decision doc: "should feel like an analyst briefing") — larger type,
+   generous line height, and a gold accent (the same accent used for
+   Opportunity, reused here to mean "editorial insight" rather than a
+   score) to set it apart from a plain data card. */
+.antennaViewCard {
+  padding: 30px 32px;
+  border-left: 4px solid var(--color-gold);
+}
+
+.antennaViewHeading {
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.narrative {
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--color-ink-soft);
+  max-width: 720px;
+}
+
+/* Metrics layer: Opportunity/Momentum plus the score breakdown, grouped on
+   one subtly tinted panel so they read as supporting indicators underneath
+   the interpretation above, not another headline-weight white card in the
+   same sequence. */
+.metricsPanel {
+  background: var(--color-border-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
 .scores {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 24px;
-  margin-bottom: 24px;
-}
-
-.narrative {
-  font-size: 16px;
-  line-height: 1.65;
-  color: var(--color-ink-soft);
-  max-width: 720px;
 }
 
 .sectionSubhead {
@@ -50,7 +109,8 @@
   color: var(--color-ink-soft);
 }
 
-.evidenceList {
-  display: flex;
-  flex-direction: column;
+.signalGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
 }

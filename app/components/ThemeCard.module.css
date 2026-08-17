@@ -3,14 +3,25 @@
   flex-direction: column;
   gap: 16px;
   padding: 24px;
-  text-decoration: none;
-  color: inherit;
+  border-top: 3px solid var(--color-border);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 8px rgba(20, 23, 31, 0.06), 0 16px 32px rgba(20, 23, 31, 0.08);
+}
+
+/* Phase 3B — the click-through-to-theme area is now a Link nested inside
+   the card div rather than the card itself, so "Leading activity" org
+   names below can be their own, sibling links (see ThemeCard.tsx header
+   comment for why). */
+.cardLink {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  text-decoration: none;
+  color: inherit;
 }
 
 .top {
@@ -23,6 +34,26 @@
 .title {
   font-size: 18px;
   line-height: 1.25;
+}
+
+/* Phase 3B.1 — "What this means": a fixed, plain-English theme definition,
+   shown before Antenna's own interpretation (Market Signal + narrative). */
+.definition {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+/* Phase 3B.2: separates "what is this" (title + definition, above) from
+   "what is happening" (Market Signal, scores, narrative, below) with a
+   thin rule and a subtly tinted background, the same layering logic used
+   on the theme and organisation detail pages, scaled down for a card. */
+.interpretation {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .scores {
@@ -49,4 +80,25 @@
 .meta strong {
   color: var(--color-ink-soft);
   font-weight: 600;
+}
+
+.leading {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-ink-faint);
+}
+
+.leadingLabel {
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+
+.leadingLink {
+  color: var(--color-ink-soft);
+  text-decoration: none;
+}
+
+.leadingLink:hover {
+  color: var(--color-ink);
+  text-decoration: underline;
 }

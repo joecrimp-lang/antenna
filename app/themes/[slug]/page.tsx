@@ -1,8 +1,19 @@
-// Theme detail page — Chunk 3, the four-layer view described in the brief:
-// (1) editorial summary, (2) score transparency, (3) evidence explorer,
-// (4) companies as supporting evidence. Reuses the same theme_scores +
-// signals data the homepage and intelligence layer already produce; no new
-// tables, no new taxonomy, no scoring change.
+// Theme detail page. Chunk 3 built this as 4 layers: editorial summary,
+// score transparency, an evidence explorer grouped by signal_type, and a
+// flat companies list. Phase 3B replaced the evidence layer with a
+// Buyer/Vendor split "Market Evidence" section and removed the companies
+// list. Phase 3B.1 added the Market Signal and relabelled the narrative
+// "Antenna View", and merged Buyer/Vendor evidence back into one "Market
+// Activity" stream.
+//
+// Phase 3B.2 ("Product Polish & Trust Layer") restructures the layout into
+// four visually distinct layers, following the decision doc's own user
+// journey: what should I take away (Market Signal), why does Antenna think
+// this (Antenna View), what are the underlying indicators (Opportunity,
+// Momentum and the score breakdown, grouped together as one metrics layer
+// on a subtly tinted panel), what evidence supports it (Market Activity).
+// Presentation only: no research methodology, taxonomy, or scoring formula
+// changes in this file or this phase, see the Phase 3B.2 delivery report.
 
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,38 +23,23 @@ import {
   type Signal,
   type ThemeScore,
 } from "@/lib/supabase";
-import type { AntennaSignalType } from "@/lib/antennaTaxonomy";
 import { slugToTheme } from "@/lib/themeSlug";
+import { companyToSlug } from "@/lib/companySlug";
+import { signalTypeLabel } from "@/lib/signalTypeLabel";
+import { organisationTypeLabel } from "@/lib/organisationDisplay";
+import { themeDefinition } from "@/lib/themeDefinitions";
+import { computeMarketSignal, MARKET_SIGNAL_COLOR_VAR } from "@/lib/marketSignal";
 import Header from "../../components/Header";
 import ScoreIndicator from "../../components/ScoreIndicator";
 import ScoreBreakdown from "../../components/ScoreBreakdown";
-import EvidenceSection, { type EvidenceItem } from "../../components/EvidenceSection";
-import CompanyList, { type CompanyEvidence } from "../../components/CompanyList";
+import MarketSignalBadge from "../../components/MarketSignalBadge";
+import SignalCard, { type SignalCardData } from "../../components/SignalCard";
 import styles from "./theme.module.css";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 type SignalWithCompany = Signal & { company: Company };
-
-const STRENGTH_LABEL: Record<string, string> = {
-  strong: "Strong",
-  emerging: "Emerging",
-  limited: "Limited",
-};
-
-// Display labels for the Evidence Explorer. Antenna's canonical signal_type
-// taxonomy (lib/antennaTaxonomy.ts) has no "partnerships" dimension — the
-// brief's Layer 3 asks for a Partnerships section, so "strategy" is shown
-// under that label here. This is a display-only mapping: the underlying
-// signal_type value, taxonomy, and stored data are all unchanged.
-const EVIDENCE_SECTIONS: { type: AntennaSignalType; label: string }[] = [
-  { type: "projects_launches", label: "Projects & Launches" },
-  { type: "hiring", label: "Hiring" },
-  { type: "expenditure", label: "Expenditure" },
-  { type: "procurement", label: "Procurement" },
-  { type: "strategy", label: "Partnerships" },
-];
 
 async function getThemeData(themeName: string) {
   const supabase = getSupabase();
@@ -76,42 +72,37 @@ async function getThemeData(themeName: string) {
   };
 }
 
+function toSignalCardData(s: SignalWithCompany): SignalCardData {
+  return {
+    id: s.id,
+    organisationName: s.company?.name ?? "Unknown organisation",
+    organisationSlug: companyToSlug(s.company?.name ?? ""),
+    organisationTypeLabel: organisationTypeLabel(s.company?.organisation_type ?? null),
+    headline: s.summary,
+    signalTypeLabel: signalTypeLabel(s.signal_type),
+    intentScore: s.signal_intent_score,
+    shortSummary: s.detail,
+    sourceUrl: s.source_url,
+    sourceTitle: s.source_title,
+  };
+}
+
 export default async function ThemeDetail({ params }: { params: { slug: string } }) {
   const theme = slugToTheme(params.slug);
   if (!theme) notFound();
 
   const { score, signals, errors } = await getThemeData(theme);
 
-  const organisationCount = new Set(signals.map((s) => s.company_id)).size;
+  const withCompany = signals.filter((s) => s.company);
+  const organisationCount = new Set(withCompany.map((s) => s.company_id)).size;
 
-  const evidenceBuckets = EVIDENCE_SECTIONS.map(({ type, label }) => {
-    const items: EvidenceItem[] = signals
-      .filter((s) => s.signal_type === type)
-      .map((s) => ({
-        companyName: s.company?.name ?? "Unknown organisation",
-        summary: s.summary,
-      }));
-    const organisations = new Set(
-      signals.filter((s) => s.signal_type === type).map((s) => s.company_id)
-    ).size;
-    return { label, items, organisations };
+  const marketSignal = computeMarketSignal({
+    momentum_score: score?.momentum_score ?? null,
+    investment_evidence_pct: score?.investment_evidence_pct ?? null,
+    velocity_pct: score?.velocity_pct ?? null,
+    signals_count: score?.signals_count ?? 0,
   });
-
-  const companiesById = new Map<number, CompanyEvidence>();
-  for (const s of signals) {
-    if (!s.company) continue;
-    const existing = companiesById.get(s.company_id);
-    if (existing) {
-      existing.findings.push(s.summary);
-    } else {
-      companiesById.set(s.company_id, {
-        companyName: s.company.name,
-        companyWebsite: s.company.website,
-        findings: [s.summary],
-      });
-    }
-  }
-  const companies = Array.from(companiesById.values());
+  const accentColor = MARKET_SIGNAL_COLOR_VAR[marketSignal];
 
   return (
     <main>
@@ -132,87 +123,82 @@ export default async function ThemeDetail({ params }: { params: { slug: string }
         </div>
       )}
 
-      {/* Layer 1 — editorial intelligence summary */}
+      {/* Layer 1 — page identity: what this theme is */}
       <section className={styles.titleRow}>
         <div>
           <p className="eyebrow">Theme</p>
           <h1 className={styles.title}>{theme}</h1>
         </div>
-        {score?.opportunity_strength && (
-          <span className={`badge badge--${score.opportunity_strength}`}>
-            {STRENGTH_LABEL[score.opportunity_strength]}
-          </span>
-        )}
       </section>
+      <p className={styles.definition}>{themeDefinition(theme)}</p>
 
-      <div className={`card ${styles.narrativeCard}`}>
-        <div className={styles.scores}>
-          <ScoreIndicator label="Opportunity" value={score?.opportunity_score ?? null} variant="gold" size="lg" />
-          <ScoreIndicator label="Momentum" value={score?.momentum_score ?? null} variant="teal" size="lg" />
+      {/* Layer 2 — interpretation: what should I take away, why does
+          Antenna think this. Two distinct cards, not one blended block. */}
+      <div className={styles.interpretationStack}>
+        <div className={`card ${styles.signalCard}`} style={{ borderTopColor: accentColor }}>
+          <p className={styles.layerLabel}>What should I take away?</p>
+          <MarketSignalBadge state={marketSignal} size="lg" />
         </div>
-        <p className={styles.narrative}>
-          {score?.narrative ??
-            "Editorial analysis for this theme hasn't been generated yet. The scores above are already live and reflect Antenna's current intelligence data."}
-        </p>
+
+        <div className={`card ${styles.antennaViewCard}`}>
+          <p className={styles.layerLabel}>Why does Antenna think this?</p>
+          <h3 className={styles.antennaViewHeading}>Antenna View</h3>
+          <p className={styles.narrative}>
+            {score?.narrative ??
+              "Antenna has not generated an interpretation for this theme yet. The scores below are already live and reflect Antenna's current intelligence data."}
+          </p>
+        </div>
       </div>
 
-      {/* Layer 2 — score transparency */}
+      {/* Layer 3 — metrics: the underlying indicators, grouped on one
+          subtly tinted panel so it reads as supporting data, not another
+          headline card competing with the interpretation above it. */}
       <section className="section">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Score transparency</p>
-            <h2>Why this score?</h2>
+            <h2>What are the underlying indicators?</h2>
           </div>
         </div>
-        <ScoreBreakdown
-          momentumScore={score?.momentum_score ?? null}
-          investmentEvidencePct={score?.investment_evidence_pct ?? null}
-          adoptionShiftDelta={score?.adoption_shift_delta ?? null}
-          opportunityScore={score?.opportunity_score ?? null}
-        />
+        <div className={styles.metricsPanel}>
+          <div className={styles.scores}>
+            <ScoreIndicator label="Opportunity" value={score?.opportunity_score ?? null} variant="gold" size="lg" />
+            <ScoreIndicator label="Momentum" value={score?.momentum_score ?? null} variant="teal" size="lg" />
+          </div>
+          <ScoreBreakdown
+            momentumScore={score?.momentum_score ?? null}
+            investmentEvidencePct={score?.investment_evidence_pct ?? null}
+            adoptionShiftDelta={score?.adoption_shift_delta ?? null}
+            opportunityScore={score?.opportunity_score ?? null}
+          />
+        </div>
       </section>
 
-      {/* Layer 3 — evidence explorer */}
+      {/* Layer 4 — evidence: one combined Market Activity stream (decision
+          doc: "the insight is the market movement, not the category"),
+          Buyer/Vendor labels kept per card via SignalCard. */}
       <section className="section">
         <div className="section-heading">
           <div>
             <p className="eyebrow">Evidence</p>
-            <h2>Evidence Explorer</h2>
+            <h2>Market Activity</h2>
           </div>
         </div>
         <p className={styles.sectionSubhead}>
-          {signals.length} signal{signals.length === 1 ? "" : "s"} from {organisationCount}{" "}
-          organisation{organisationCount === 1 ? "" : "s"}, grouped by the kind of evidence they
-          represent.
+          {withCompany.length} signal{withCompany.length === 1 ? "" : "s"} detected across{" "}
+          {organisationCount} organisation{organisationCount === 1 ? "" : "s"}: who is investing,
+          and who is enabling that investment.
         </p>
-        {signals.length === 0 ? (
+
+        {withCompany.length === 0 ? (
           <p className="empty-state">No signals recorded for this theme yet.</p>
         ) : (
-          <div className={styles.evidenceList}>
-            {evidenceBuckets.map((bucket, i) => (
-              <EvidenceSection
-                key={bucket.label}
-                title={bucket.label}
-                signalCount={bucket.items.length}
-                organisationCount={bucket.organisations}
-                items={bucket.items}
-                defaultOpen={i === 0}
-              />
+          <div className={styles.signalGrid}>
+            {withCompany.map((s) => (
+              <SignalCard key={s.id} data={toSignalCardData(s)} />
             ))}
           </div>
         )}
-      </section>
-
-      {/* Layer 4 — companies, as supporting evidence rather than the primary
-          organising structure */}
-      <section className="section">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Contributing organisations</p>
-            <h2>Companies</h2>
-          </div>
-        </div>
-        <CompanyList companies={companies} />
       </section>
     </main>
   );

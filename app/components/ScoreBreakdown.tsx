@@ -2,27 +2,41 @@
 // opportunity_score (lib/intelligence.ts §14.3), not a re-explanation in
 // prose alone — the brief's whole point here is that a user should trust
 // the score because they can see the calculation, not just be told about it.
+//
+// Phase 3B ("Score terminology and explanation layer", the brief's priority
+// task): "the front end should explain 'what does this mean?' before 'how
+// is this calculated?'". Each row now shows the plain-English description
+// (SCORE_COPY[...].lead) directly under the label — always visible, no
+// click required — and keeps the methodology text (SCORE_COPY[...].tooltip)
+// behind the existing (i) affordance for anyone who wants the calculation
+// detail. No formula, value, or component changed — copy only.
 
 import InfoTooltip from "./InfoTooltip";
+import { SCORE_COPY } from "@/lib/copy";
 import styles from "./ScoreBreakdown.module.css";
 
 function Row({
   label,
+  description,
   value,
   tooltip,
   emphasis,
 }: {
   label: string;
+  description: string;
   value: string;
   tooltip: string;
   emphasis?: boolean;
 }) {
   return (
     <div className={`${styles.row} ${emphasis ? styles.emphasis : ""}`}>
-      <span className={styles.label}>
-        {label}
-        <InfoTooltip text={tooltip} />
-      </span>
+      <div className={styles.labelCol}>
+        <span className={styles.label}>
+          {label}
+          <InfoTooltip text={tooltip} />
+        </span>
+        <span className={styles.description}>{description}</span>
+      </div>
       <span className={styles.value}>{value}</span>
     </div>
   );
@@ -44,28 +58,32 @@ export default function ScoreBreakdown({
       <h3 className={styles.heading}>Why this score?</h3>
       <div className={styles.rows}>
         <Row
-          label="Market Momentum"
-          value={momentumScore === null ? "—" : String(momentumScore)}
-          tooltip="Volume and spread of market activity: how many organisations are active, how strong the underlying signals are, and whether activity is accelerating."
+          label={SCORE_COPY.momentum.label}
+          description={SCORE_COPY.momentum.lead}
+          value={momentumScore === null ? "-" : String(momentumScore)}
+          tooltip={SCORE_COPY.momentum.tooltip}
         />
         <Row
-          label="Investment Evidence"
-          value={investmentEvidencePct === null ? "—" : `${investmentEvidencePct}%`}
-          tooltip="Share of this theme's recent signals that are both high-confidence and high-intent — genuine, well-sourced evidence of active buying, not just activity."
+          label={SCORE_COPY.investmentEvidence.label}
+          description={SCORE_COPY.investmentEvidence.lead}
+          value={investmentEvidencePct === null ? "-" : `${investmentEvidencePct}%`}
+          tooltip={SCORE_COPY.investmentEvidence.tooltip}
         />
         <Row
-          label="Adoption Shift"
+          label={SCORE_COPY.adoptionShift.label}
+          description={SCORE_COPY.adoptionShift.lead}
           value={
             adoptionShiftDelta === null
-              ? "—"
+              ? "-"
               : `${adoptionShiftDelta >= 0 ? "+" : ""}${adoptionShiftDelta}`
           }
-          tooltip="Whether evidence in this theme is moving toward confirmed spend/procurement/launches, or staying in early strategy/hiring — positive means the market is shifting toward adoption."
+          tooltip={SCORE_COPY.adoptionShift.tooltip}
         />
         <Row
-          label="Opportunity Score"
-          value={opportunityScore === null ? "—" : String(opportunityScore)}
-          tooltip="Momentum, investment evidence, and adoption shift combined — a generic read on how attractive this area is for a media technology supplier, not personalised to any one company."
+          label={SCORE_COPY.opportunity.label}
+          description={SCORE_COPY.opportunity.lead}
+          value={opportunityScore === null ? "-" : String(opportunityScore)}
+          tooltip={SCORE_COPY.opportunity.tooltip}
           emphasis
         />
       </div>

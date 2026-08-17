@@ -55,7 +55,7 @@ export async function sendDigestEmail(items: DigestItem[]) {
   const { data, error } = await resend.emails.send({
     from,
     to,
-    subject: `Tech spend signals digest — ${items.length} new`,
+    subject: `Tech spend signals digest: ${items.length} new`,
     html,
   });
 

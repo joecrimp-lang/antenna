@@ -24,7 +24,7 @@ export default function ScoreIndicator({
       <div className={styles.labelRow}>
         <span className={styles.label}>{label}</span>
         <span className={`${styles.value} ${variant === "gold" ? styles.gold : styles.teal}`}>
-          {value === null ? "—" : value}
+          {value === null ? "-" : value}
         </span>
       </div>
       <div className={styles.track} role="img" aria-label={`${label}: ${value === null ? "not yet scored" : `${value} out of 100`}`}>

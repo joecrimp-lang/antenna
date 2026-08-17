@@ -23,7 +23,7 @@ const sans = Inter({
 });
 
 export const metadata = {
-  title: "Antenna — Media Technology Intelligence",
+  title: "Antenna: Media Technology Intelligence",
   description:
     "Antenna identifies where media and entertainment technology investment is moving, and explains the evidence behind it.",
 };

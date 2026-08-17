@@ -38,6 +38,7 @@ import OpenAI from "openai";
 import { getSupabase } from "../lib/supabase";
 import { ANTENNA_THEMES, type AntennaTheme } from "../lib/antennaTaxonomy";
 import { themeToSlug } from "../lib/themeSlug";
+import { stripEmDashes } from "../lib/textSanitize";
 
 // --- CLI args ---------------------------------------------------------
 
@@ -103,7 +104,9 @@ ${params.examples.map((e) => `- ${e}`).join("\n")}
 
 Write two pieces of copy:
 1. narrative_summary: ONE sentence (max ~30 words) for a summary card. State the overall picture plainly — do not just restate the numbers.
-2. narrative: a short editorial paragraph (3-5 sentences) for a detail page. Explain what the evidence pattern actually shows — e.g. whether activity is broad but early-stage, or narrower but backed by stronger buying signals — grounded in the data and examples above. Confident, analytical tone; no hype, no generic AI-marketing language, no clichés.
+2. narrative: a short editorial paragraph (3-5 sentences) for a detail page. Explain what the evidence pattern actually shows, e.g. whether activity is broad but early-stage, or narrower but backed by stronger buying signals, grounded in the data and examples above. Confident, analytical tone; no hype, no generic AI-marketing language, no clichés.
+
+Writing style: do not use em dashes ("—") anywhere in your response. Use commas, full stops, colons, or brackets instead.
 
 Respond with ONLY a JSON object (no markdown fences, no commentary), exactly this shape:
 {"narrative_summary": "...", "narrative": "..."}`;
@@ -185,8 +188,9 @@ async function generateOne(
     const match = text.match(/\{[\s\S]*\}/);
     const parsed = match ? (JSON.parse(match[0]) as Record<string, unknown>) : null;
 
-    const narrative_summary = typeof parsed?.narrative_summary === "string" ? parsed.narrative_summary.trim() : null;
-    const narrative = typeof parsed?.narrative === "string" ? parsed.narrative.trim() : null;
+    const narrative_summary =
+      typeof parsed?.narrative_summary === "string" ? stripEmDashes(parsed.narrative_summary.trim()) : null;
+    const narrative = typeof parsed?.narrative === "string" ? stripEmDashes(parsed.narrative.trim()) : null;
 
     if (!narrative_summary || !narrative) {
       errors.push(`${score.theme}: model response did not contain both fields — raw: ${text.slice(0, 200)}`);

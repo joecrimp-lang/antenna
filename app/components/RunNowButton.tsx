@@ -39,7 +39,7 @@ export default function RunNowButton() {
       const companies = data?.companiesProcessed ?? 0;
       const signals = data?.signalsFound ?? 0;
       setMessage(
-        `Done — processed ${companies} compan${companies === 1 ? "y" : "ies"}, found ${signals} new signal${signals === 1 ? "" : "s"}.`
+        `Done: processed ${companies} compan${companies === 1 ? "y" : "ies"}, found ${signals} new signal${signals === 1 ? "" : "s"}.`
       );
       router.refresh();
     } catch (err) {
