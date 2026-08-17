@@ -2,6 +2,7 @@ import { getSupabase, type Company } from "./supabase";
 import { researchCompany } from "./research";
 import { sendDigestEmail, type DigestItem } from "./email";
 import { SCORING_VERSION } from "./antennaTaxonomy";
+import { computeSignalIntentScore, computeAndStoreThemeScores } from "./intelligence";
 
 // Companies are processed in concurrent groups rather than one at a time so
 // the whole watchlist finishes within a single Vercel function invocation
@@ -39,6 +40,28 @@ async function processCompany(supabase: SupabaseClient, company: Company) {
   try {
     const findings = await researchCompany(company);
     for (const finding of findings) {
+      // Explicit created_at (rather than relying on the column default) so
+      // Signal Intent Score's recency component and the stored created_at
+      // timestamp are computed from the exact same instant — "signal
+      // creation time" means one specific moment, not two slightly
+      // different ones from two separate clock reads.
+      const createdAt = new Date().toISOString();
+
+      // Antenna Intelligence v0.2 — Signal Intent Score (lib/intelligence.ts).
+      // Computed once, here, from fields the v0.1 classification pass
+      // already produced (confidence_score, intent_score, published_date,
+      // confirmed_spend_amount) — no new OpenAI call, lib/research.ts is
+      // untouched. Null in, null out: a finding with unparseable
+      // classification (confidence_score/intent_score null) simply gets no
+      // intelligence score either, same as it gets no theme/signal_type.
+      const intelligence = computeSignalIntentScore({
+        confidence_score: finding.confidence_score,
+        intent_score: finding.intent_score,
+        published_date: finding.published_date,
+        created_at: createdAt,
+        confirmed_spend_amount: finding.confirmed_spend_amount,
+      });
+
       const { error: insertError } = await supabase.from("signals").insert({
         company_id: company.id,
         summary: finding.summary,
@@ -46,6 +69,7 @@ async function processCompany(supabase: SupabaseClient, company: Company) {
         source_url: finding.source_url,
         source_title: finding.source_title,
         published_date: finding.published_date,
+        created_at: createdAt,
         // Antenna Intelligence v0.1 classification. theme/signal_type/scores
         // are null when the model's output couldn't be validated against
         // the canonical taxonomy — the row is still stored (see research.ts)
@@ -59,9 +83,13 @@ async function processCompany(supabase: SupabaseClient, company: Company) {
         classification_reason: finding.classification_reason,
         confirmed_spend_amount: finding.confirmed_spend_amount,
         confirmed_spend_currency: finding.confirmed_spend_currency,
-        // estimated_opportunity_* and opportunity_strength intentionally
-        // omitted — no approved methodology yet, so they stay NULL (see
-        // ANTENNA_SCORING_MODEL.md).
+        // estimated_opportunity_* and signals.opportunity_strength
+        // intentionally omitted — still no approved per-signal-dollar
+        // methodology (different concept from the theme-level Opportunity
+        // Score below), so they stay NULL (see ANTENNA_SCORING_MODEL.md).
+        signal_intent_score: intelligence.signal_intent_score,
+        scoring_reason: intelligence.scoring_reason,
+        intelligence_scoring_version: intelligence.intelligence_scoring_version,
       });
       // Unique constraint on (company_id, source_url) means duplicates are
       // silently skipped rather than treated as an error.
@@ -142,6 +170,22 @@ export async function runFullResearch(): Promise<RunSummary> {
       signalsFound += result.signalsFound;
       errors.push(...result.errors);
     }
+  }
+
+  // Antenna Intelligence v0.2 — Market Momentum + Opportunity Score
+  // (lib/intelligence.ts). A separate, scheduled aggregation step (not a
+  // per-signal or per-company computation, not a database trigger) run once
+  // per research run, after every company has been processed and every new
+  // signal stored — it necessarily reads across the whole current `signals`
+  // dataset, not just this run's inserts. Wrapped in try/catch, same as the
+  // digest step below: a bug in the intelligence layer must never be able
+  // to take down signal collection itself, which stays the priority this
+  // whole project has protected throughout. Failures are recorded like any
+  // other run error.
+  try {
+    await computeAndStoreThemeScores(supabase, errors);
+  } catch (err) {
+    errors.push(`Theme intelligence aggregation: ${(err as Error).message}`);
   }
 
   const { data: unsent } = await supabase

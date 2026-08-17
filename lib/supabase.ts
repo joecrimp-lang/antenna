@@ -52,12 +52,50 @@ export type Signal = {
   confirmed_spend_amount: number | null;
   confirmed_spend_currency: string | null;
   // Opportunity fields exist for future use only — no code populates these
-  // in v0.1 (no approved methodology yet). Always null for now.
+  // in v0.1 (no approved methodology yet — a per-signal dollar estimate, a
+  // different concept from the theme-level Opportunity Score in v0.2, see
+  // ThemeScore below). Always null for now.
   estimated_opportunity_low: number | null;
   estimated_opportunity_high: number | null;
   estimated_opportunity_currency: string | null;
   opportunity_strength: AntennaOpportunityStrength | null;
+  // Antenna Intelligence v0.2 — Signal Intent Score (lib/intelligence.ts).
+  // Computed once at signal-creation time from the fields above; null for
+  // any signal with null confidence_score/intent_score, and null for every
+  // historical (pre-v0.2) row, which is not backfilled. See
+  // ANTENNA_SCORING_MODEL.md §14.
+  signal_intent_score: number | null;
+  scoring_reason: string | null;
+  intelligence_scoring_version: string | null;
 };
+
+// Antenna Intelligence v0.2 — theme-level Market Momentum + Opportunity
+// Score (lib/intelligence.ts). One row per canonical theme, upserted after
+// each research run — always the LATEST computed value, not history (see
+// ThemeScoreSnapshot below for that).
+export type ThemeScore = {
+  id: number;
+  theme: AntennaTheme;
+  window_days: number;
+  signals_count: number;
+  organisations_count: number;
+  high_intent_signal_count: number;
+  signal_diversity: number;
+  velocity_pct: number | null;
+  momentum_score: number | null;
+  opportunity_score: number | null;
+  opportunity_strength: AntennaOpportunityStrength | null;
+  scoring_reason: string | null;
+  scoring_version: string;
+  computed_at: string;
+};
+
+// Append-only history — one new row per theme every time the aggregation
+// step runs, so momentum/opportunity trend over time is queryable. Same
+// shape as ThemeScore; a separate table (not a `history` flag on
+// theme_scores) so "current state" and "history" stay cleanly separated at
+// the schema level and the current-state table never grows unbounded.
+export type ThemeScoreSnapshot = Omit<ThemeScore, "id"> & { id: number };
 
 // Foundations for the future email-gated report experience (Build Chunk 1,
 // Part D). No code writes to this table yet — capture form, auth, and

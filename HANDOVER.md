@@ -17,18 +17,21 @@ app/
   api/run-now/route.ts            — POST, operator-only manual trigger (ADMIN_RUN_SECRET)
   api/cron/research/route.ts      — GET, daily cron trigger (CRON_SECRET, fail-closed)
 lib/
-  supabase.ts                     — Supabase client factory + shared types (Signal, Company, Subscriber, DailyReport)
+  supabase.ts                     — Supabase client factory + shared types (Signal, Company, Subscriber, DailyReport, ThemeScore, ThemeScoreSnapshot)
   antennaTaxonomy.ts              — canonical theme/signal_type/opportunity-strength lists + scoring version (single source of truth)
   research.ts                     — OpenAI call + prompt + Antenna Intelligence classification/validation for one company
-  runResearch.ts                  — orchestrates a full run across companies
+  intelligence.ts                 — Antenna Intelligence Layer v0.2: Signal Intent Score, Market Momentum Score, Opportunity Score (no OpenAI calls — pure derivation over already-classified signals)
+  runResearch.ts                  — orchestrates a full run across companies, then the theme-intelligence aggregation step
   email.ts                        — Resend digest email
 supabase/schema.sql                          — original table definitions + seed data (50 companies)
 supabase/002_antenna_intelligence_v0.1.sql   — Build Chunk 1 additive migration (classification columns, subscribers, daily_reports)
+supabase/003_antenna_intelligence_v0.2.sql   — Intelligence layer additive migration (signal_intent_score + theme_scores/theme_score_snapshots)
 .env.example                      — documents required env vars (names only)
 vercel.json                       — cron schedule config
 README.md                         — detailed running history/decisions log
 HANDOVER.md                       — this document
-ANTENNA_SCORING_MODEL.md          — Antenna Intelligence Scoring Model v0.1 reference (taxonomy, bands, exact prompt, methodology proposals)
+ANTENNA_SCORING_MODEL.md          — Antenna Intelligence Scoring Model reference: v0.1 classification (taxonomy, bands, exact prompt) and v0.2 intelligence layer (§14: Signal Intent/Momentum/Opportunity formulas)
+ANTENNA_INTELLIGENCE_LAYER_V0.2_PROPOSAL.md — the proposal document this chunk was built against; kept as the historical decision record
 package.json / tsconfig.json / next.config.js / next-env.d.ts
 ```
 
@@ -42,17 +45,21 @@ No auth, no admin UI, no tests, no CI config. This sandbox has no git history fo
 
 ## Database (Supabase / Postgres)
 
-Five tables as of Build Chunk 1 (three original + two new foundation tables), no RLS policies defined (app relies entirely on the service-role key server-side; there is no client-side/browser Supabase usage anywhere).
+Seven tables as of the intelligence-layer chunk (three original + two Build Chunk 1 foundation tables + two new intelligence tables), no RLS policies defined (app relies entirely on the service-role key server-side; there is no client-side/browser Supabase usage anywhere).
 
 **`companies`** — the fixed watchlist, seeded once via `schema.sql`, 50 rows. `id`, `rank` (1–50, used for ordering and for the pilot LIMIT/OFFSET mechanism), `name` (unique), `website`, `country`, `created_at`. No UI to edit this list — changes require editing `schema.sql` and re-running SQL directly.
 
-**`signals`** — one row per discovered finding. `id`, `company_id` (FK → companies), `summary`, `detail`, `source_url`, `source_title`, `published_date` (nullable), `created_at`, `emailed_at`. Unique constraint on `(company_id, source_url)` — the entire deduplication mechanism, unchanged. **As of Build Chunk 1**, also carries Antenna Intelligence v0.1 classification: `theme`, `signal_type`, `confidence_score` (0–100), `intent_score` (0–100), `scoring_version`, `classification_reason`, `confirmed_spend_amount`, `confirmed_spend_currency`, plus schema-only-for-now `estimated_opportunity_low/high/currency` and `opportunity_strength` (always null — no methodology approved yet). All new columns are nullable; historical rows are unaffected. See `ANTENNA_SCORING_MODEL.md` for exact meaning/validation.
+**`signals`** — one row per discovered finding. `id`, `company_id` (FK → companies), `summary`, `detail`, `source_url`, `source_title`, `published_date` (nullable), `created_at`, `emailed_at`. Unique constraint on `(company_id, source_url)` — the entire deduplication mechanism, unchanged. Carries Antenna Intelligence v0.1 classification (Build Chunk 1): `theme`, `signal_type`, `confidence_score` (0–100), `intent_score` (0–100), `scoring_version`, `classification_reason`, `confirmed_spend_amount`, `confirmed_spend_currency`, plus schema-only-for-now `estimated_opportunity_low/high/currency` and `opportunity_strength` (always null — no per-signal-dollar methodology approved yet). **As of the intelligence-layer chunk**, also carries `signal_intent_score` (0–100), `scoring_reason`, and `intelligence_scoring_version` (`"intel-signal-v1"`) — computed once, at signal-creation time, in `lib/runResearch.ts` via `lib/intelligence.ts`; see `ANTENNA_SCORING_MODEL.md` §14. All new columns are nullable and not backfilled onto historical rows.
 
 **`runs`** — one row per research run (manual or cron). `id`, `started_at`, `finished_at`, `status` (`running` / `completed` / `completed_with_errors`), `companies_processed`, `signals_found`, `error`. Unchanged in this chunk.
 
-**`subscribers`** *(new, Build Chunk 1)* — foundations for the future email-gated report; only `email` required. No capture form or code writes to it yet. See `ANTENNA_SCORING_MODEL.md` §8.
+**`subscribers`** *(Build Chunk 1)* — foundations for the future email-gated report; only `email` required. No capture form or code writes to it yet. See `ANTENNA_SCORING_MODEL.md` §8.
 
-**`daily_reports`** *(new, Build Chunk 1)* — foundations for an immutable daily report snapshot; `report_date`, `report_data` (jsonb), `status`. No generation job writes to it yet — the company/theme aggregation methodology it would depend on is proposed but not approved. See `ANTENNA_SCORING_MODEL.md` §9, §11, §12.
+**`daily_reports`** *(Build Chunk 1)* — foundations for an immutable daily report snapshot; `report_date`, `report_data` (jsonb), `status`. No generation job writes to it yet — see `ANTENNA_SCORING_MODEL.md` §9, §14.4 (the new `theme_score_snapshots` table below is intended as this generation step's future input).
+
+**`theme_scores`** *(new, intelligence-layer chunk)* — one row per canonical theme (10 rows, upserted in place — always the latest computed value, never historical). Market Momentum Score, Opportunity Score, and their supporting counts (`signals_count`, `organisations_count`, `high_intent_signal_count`, `signal_diversity`, `velocity_pct`), plus `scoring_reason` and `scoring_version` (`"intel-theme-v1"`). Written by `computeAndStoreThemeScores()` in `lib/intelligence.ts`, called once per research run. See `ANTENNA_SCORING_MODEL.md` §14.2–§14.4.
+
+**`theme_score_snapshots`** *(new, intelligence-layer chunk)* — same shape as `theme_scores`, but append-only: one new row per theme every time the aggregation step runs, so momentum/opportunity trend over time is queryable. Written alongside `theme_scores` by the same computation. No UI reads this yet.
 
 ## How a research run works, end-to-end
 
@@ -61,10 +68,11 @@ Five tables as of Build Chunk 1 (three original + two new foundation tables), no
 3. Load companies from `companies`, ordered by `rank`, optionally windowed by `RESEARCH_COMPANY_LIMIT` / `RESEARCH_COMPANY_OFFSET` (see below).
 4. Process companies in concurrent chunks of `CONCURRENCY` (currently **2**) using `Promise.all` per chunk — the next chunk starts only once the current one fully settles. This is a single synchronous invocation, not a queue or background job; everything must finish inside one Vercel function call.
 5. For each company (`researchCompany()` in `lib/research.ts`): one OpenAI Responses API call with the `web_search_preview` tool, a 25-second per-call timeout, `maxRetries: 0`, `max_output_tokens: 2000` (raised from 1200 in Build Chunk 1 alongside the classification fields below — see `ANTENNA_SCORING_MODEL.md` §5). The model returns up to 2 findings as JSON, **each now including Antenna Intelligence v0.1 classification** (theme, signal_type, confidence/intent scores, rationale — same call, no second OpenAI request). Any failure (timeout, API error, malformed JSON) is caught and recorded as a per-company error — it does not fail the run or the rest of that chunk.
-6. Each finding is inserted into `signals`, including its classification fields (`scoring_version` set by code, not the model); a duplicate `(company_id, source_url)` is silently skipped (not an error, not counted as found). A finding with unparseable/invalid classification is still stored, with those fields left `null` — classification failure never blocks storage of the underlying signal.
-7. After all companies are processed: query every `signals` row with `emailed_at is null`, send one digest email via Resend if there are any, and only mark them `emailed_at` if the send is confirmed successful (fixed recently — see "Known issues").
-8. Update the `runs` row: `finished_at`, `status` (`completed` if no errors accumulated, else `completed_with_errors`), `companies_processed`, `signals_found`, and the joined error text.
-9. Return a JSON summary (`companiesProcessed`, `signalsFound`, `emailed`, `errors[]`) to the caller.
+6. Immediately before each finding is inserted, its Signal Intent Score is computed (`computeSignalIntentScore()` in `lib/intelligence.ts` — pure arithmetic over the fields already returned by `researchCompany()`, no OpenAI call) and included in the same insert. Each finding is inserted into `signals`, including its v0.1 classification fields (`scoring_version` set by code, not the model) and its v0.2 intelligence fields (`signal_intent_score`, `scoring_reason`, `intelligence_scoring_version`); a duplicate `(company_id, source_url)` is silently skipped (not an error, not counted as found). A finding with unparseable/invalid classification is still stored, with those fields (and, consequently, the intelligence fields) left `null` — classification failure never blocks storage of the underlying signal.
+7. After every company is processed: `computeAndStoreThemeScores()` (`lib/intelligence.ts`) recomputes Market Momentum + Opportunity Score for all 10 themes from the current `signals` dataset, upserts `theme_scores`, and appends a row to `theme_score_snapshots`. Wrapped in try/catch — a failure here is recorded as a run error but never blocks the digest step below.
+8. Query every `signals` row with `emailed_at is null`, send one digest email via Resend if there are any, and only mark them `emailed_at` if the send is confirmed successful (fixed recently — see "Known issues").
+9. Update the `runs` row: `finished_at`, `status` (`completed` if no errors accumulated, else `completed_with_errors`), `companies_processed`, `signals_found`, and the joined error text.
+10. Return a JSON summary (`companiesProcessed`, `signalsFound`, `emailed`, `errors[]`) to the caller — unchanged shape; the intelligence layer doesn't add anything to this response (no UI consumes it yet).
 
 ## Scoring / classification logic
 
@@ -113,6 +121,9 @@ ADMIN_RUN_SECRET              (new, Build Chunk 1 — required, protects POST /a
 - **No "detected date" shown on the dashboard yet.** Signal cards currently show the source's `published_date` (often null, since the model doesn't always find one) but not `created_at` (when Antenna actually found/stored it). Identified earlier as a small gap, not yet implemented. Unaffected by Build Chunk 1.
 - **No overlapping-run protection.** Nothing stops two runs (e.g. cron firing while an operator's manual run is in progress) from executing concurrently and independently.
 - **No retry logic anywhere** — a deliberate MVP choice, not an oversight, but worth knowing before assuming failed companies get a second attempt.
+- **The intelligence layer's formula weights/thresholds are v0.2 heuristics, not validated truths.** The confidence multiplier range, recency curve breakpoints, momentum/opportunity component weights, the 10-company breadth benchmark, and the 70/40 strong/emerging/limited thresholds (`lib/intelligence.ts`, documented in `ANTENNA_SCORING_MODEL.md` §14.5) were reasoned from the source spec docs, not tuned against real production signal volume or checked against how a human analyst with real market judgement would actually rank these signals/themes — that validation hasn't happened yet and should before these scores drive anything customer-facing. Every formula is centralized in code, not the schema, so adjusting any of these later is a code change, not a migration.
+- **Signal Intent Score is not backfilled onto pre-v0.2 signals** — historical rows have `null` `signal_intent_score` and are excluded from theme aggregation until/unless a separate, explicitly-approved backfill migration is written.
+- **No UI reads `theme_scores`/`theme_score_snapshots` yet** — per explicit scope, this chunk is intelligence-layer-only. The data is queryable directly in Supabase but nothing in the app surfaces it.
 - **Classification quality is unverified.** Confidence/Intent scores are the model's self-assessment against the written bands — there's no independent check, spot-check process, or evaluation harness confirming the model applies the bands consistently across companies or over time. Worth planning for before this scoring feeds anything customer-facing.
 - **No company-level or theme-level scores exist yet**, and the formulas to produce them are proposed but explicitly not approved or implemented — see `ANTENNA_SCORING_MODEL.md` §11–§12. Nothing currently aggregates individual signal scores into anything higher-level.
 - **First production run after Build Chunk 1 timed out on 4 companies** (classification prompt made the per-company OpenAI call too slow for the fixed 25s timeout) — fixed by condensing the classification prompt (see "Timeout regression" in `README.md` and `ANTENNA_SCORING_MODEL.md` §5). Not yet re-validated with a live run. **You still need to check the Vercel `RESEARCH_COMPANY_OFFSET` env var and clear it if it's set to `5`** — it looks like a stale leftover from an earlier pilot and would silently keep skipping the first 5 companies even after the prompt fix.

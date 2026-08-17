@@ -228,3 +228,89 @@ Existing, unchanged:
 - `CRON_SECRET` — now effectively required on any Vercel deployment, not just recommended (see §1).
 
 No API keys, passwords, bearer-token values, or other secrets appear in this document or were handled outside environment variables at any point.
+
+## 14. Antenna Intelligence Layer v0.2 — Signal Intent, Market Momentum, Opportunity Score
+
+Moves Antenna from signal collection into the intelligence layer: `Public Signals → Signal Intent Score → Market Momentum Score → Opportunity Score → Action`. Full proposal, decision log, and worked examples: `ANTENNA_INTELLIGENCE_LAYER_V0.2_PROPOSAL.md` (kept as the historical record of what was proposed and approved). This section is the living reference for the methodology as implemented.
+
+**What this is not, still:** no new UI; no changes to `lib/research.ts` (the research prompt/collection); no new OpenAI calls or data sources; no company-first scoring; no personalisation (Opportunity Score answers "is this market area attractive for a generic media technology supplier," not "for you"). All three scores below are computed in application code (`lib/intelligence.ts`) from data the v0.1 classification pass already produces.
+
+### 14.1 Signal Intent Score
+
+A deterministic re-derivation of the existing `intent_score`, dampened by `confidence_score` and decayed by evidence age, plus a small bonus when a source states a confirmed spend figure. Computed **once, at signal-creation time** (`lib/runResearch.ts`, immediately before each signal is inserted) — not recomputed later. Null in, null out: a signal with unparseable classification (`confidence_score`/`intent_score` null) gets no intelligence score either.
+
+```
+confidence_multiplier = 0.7 + 0.3 × (confidence_score / 100)              // 0.70 – 1.00
+recency_multiplier    = 1.00                                              for age ≤ 90 days
+                       = 1.00 − (age − 90) / (365 − 90) × 0.40             for 91–365 days (→ 0.60)
+                       = 0.60 − (age − 365) / (545 − 365) × 0.30           for 366–545 days (→ 0.30)
+                       = 0.30                                              beyond 545 days (18 months)
+spend_bonus            = 5 if confirmed_spend_amount is not null, else 0
+
+signal_intent_score = clamp(round(intent_score × confidence_multiplier × recency_multiplier) + spend_bonus, 0, 100)
+```
+
+`age` is days between `published_date` (falling back to `created_at` if absent) and `created_at` — i.e. how old the evidence already was at the moment Antenna found and stored it.
+
+`scoring_reason` is code-generated (not model-generated — this is arithmetic, not judgment), e.g. *"Base intent 86 (buying-stage score) at 90% confidence (×0.97), evidence 12d old (×1.00 recency weight). → 83."* This is a distinct field from `classification_reason` (the model's explanation for the raw `confidence_score`/`intent_score`) — `scoring_reason` explains the derivation on top of those.
+
+Verified worked examples (`lib/intelligence.ts`, cross-checked against a standalone run of `computeSignalIntentScore`):
+- intent 86, confidence 90, 12 days old, no spend → **83**
+- intent 70, confidence 55, 200 days old, no spend → **51**
+- either raw score null → **null** (never coerced to 0)
+
+**Versioning:** `signals.intelligence_scoring_version` (currently `"intel-signal-v1"`) — a new column, deliberately separate from the existing `signals.scoring_version` (which stays exactly as-is: the v0.1 *classification* methodology version, untouched by this chunk). Two independent methodologies, two independently-versionable columns — reusing one for both would mean neither could change without silently redefining what the other's version string meant, breaking the versioning contract in §10.
+
+**Not backfilled:** pre-v0.2 signal rows are not recomputed — they simply have `null` `signal_intent_score` until/unless a separate, explicitly-approved backfill migration is written.
+
+### 14.2 Market Momentum Score
+
+Computed per theme (the existing 10-theme taxonomy — no separate "opportunity area" taxonomy was introduced; see the proposal doc §6 for why), over a trailing 90-day window vs. the immediately preceding 90-day window, as a **separate scheduled aggregation step** (`computeAndStoreThemeScores`, called once per research run from `runResearch.ts`, after every company is processed — not per-signal, not a database trigger).
+
+```
+depth     = average signal_intent_score of the theme's current-window signals (0 if none scored)
+breadth   = min(100, round(distinct_companies_in_window / 10 × 100))
+diversity = round(distinct_signal_types_in_window / 5 × 100)
+velocity  = 100                                                    if prior_window_count = 0 and current > 0
+          = 50                                                     if prior_window_count = 0 and current = 0
+          = clamp(50 + round((current − prior) / prior × 100), 0, 100)   otherwise
+
+momentum_score = round(0.35×depth + 0.25×breadth + 0.20×diversity + 0.20×velocity)   (null if signals_count = 0)
+```
+
+Also stored per theme: `signals_count`, `organisations_count`, `high_intent_signal_count` (signals with `signal_intent_score ≥ 80`), `signal_diversity` (raw count, 0–5), `velocity_pct` (the raw, unbounded % change — `null` when there's no finite prior baseline to compare against).
+
+### 14.3 Opportunity Score (generic, v1 — not personalised)
+
+Also per theme, computed in the same pass as Market Momentum (Opportunity directly consumes `momentum_score`):
+
+```
+investment_evidence = round(100 × count(confidence_score ≥ 75 and intent_score ≥ 80) / signals_count)   // current window
+adoption_ratio(window) = count(signal_type in {expenditure, procurement, projects_launches}) / signals_count(window)
+adoption_shift = 50                                                          if no prior-window baseline
+                = clamp(round(50 + 100 × (adoption_ratio(current) − adoption_ratio(prior))), 0, 100)   otherwise
+
+opportunity_score = round(0.5×momentum_score + 0.3×investment_evidence + 0.2×adoption_shift)   (null if momentum_score is null)
+
+opportunity_strength = "strong"    if opportunity_score ≥ 70
+                      = "emerging" if 40 ≤ opportunity_score < 70
+                      = "limited"  if opportunity_score < 40
+```
+
+`opportunity_strength` reuses the enum already defined for `signals.opportunity_strength` in Build Chunk 1 (`strong`/`emerging`/`limited`) — same concept, now actually populated, but at the theme grain rather than per-signal. **`signals.opportunity_strength` and `signals.estimated_opportunity_low/high/currency` remain unpopulated** — those are a different, still-unbuilt concept (a per-signal dollar estimate), not what this chunk implements.
+
+Verified worked example (`lib/intelligence.ts`, 4 current-window signals across 4 companies/4 signal types, 2 prior-window signals both experimentation-leaning): momentum 72, investment evidence 50%, adoption shift +50 (a genuine swing from 0% to 50% adoption-leaning share) → **opportunity_score 71, "strong."** Confirms the formula behaves correctly; the specific numbers depend entirely on the input dataset and aren't a target to hit.
+
+**Versioning:** `theme_scores.scoring_version` / `theme_score_snapshots.scoring_version` (currently `"intel-theme-v1"`) — one version string covering Momentum + Opportunity together, since they're computed in one pass over the same theme-level dataset. If they ever need to change independently, that's a small additive change (a second version column) later, not something built speculatively now.
+
+### 14.4 Storage: current state vs. history
+
+Two new tables (`supabase/003_antenna_intelligence_v0.2.sql`), written together by the same computation:
+- **`theme_scores`** — latest value only, one row per theme (10 rows, upserted on `theme`). Answers "what's the state right now."
+- **`theme_score_snapshots`** — append-only, one new row per theme every time the aggregation step runs. Answers "how has this theme moved over time" — trend direction is part of the product's value, so this isn't deferred to `daily_reports` generation; `daily_reports` (schema-only since Build Chunk 1) can eventually be *generated from* this history once report generation is built, but that generation step itself is still out of scope.
+
+### 14.5 All formula weights, thresholds, and window lengths are v0.2 heuristics, not fixed truths
+
+The confidence-multiplier range, the recency curve's exact breakpoints, the momentum/opportunity component weights, the 10-company breadth benchmark, and the 70/40 strong/emerging/limited thresholds are all placeholders reasoned from the source spec docs, not tuned against real production data (there isn't enough signal volume yet to sanity-check against). Treat every number in §14.1–§14.3 as a first-pass heuristic, not a validated model — none of it has been checked against how a human analyst with real market judgement would actually rank these signals/themes, and it should be before any of these scores are used for anything customer-facing or decision-driving. Every formula lives in `lib/intelligence.ts`, not baked into the schema, so adjusting any of these later is a code change, not a migration — but adjusting them should be driven by that validation, not by intuition alone. This sits alongside the same open question already logged for v0.1 classification in §7 ("no automated evaluation harness... no independent verification against real-world judgement") — the intelligence layer inherits that gap rather than closing it, since it's built on top of the same unvalidated confidence_score/intent_score inputs.
+
+**Reaffirming scope, since it's easy to drift here:** the Opportunity Score in §14.3 is a single, generic "is this market area attractive for a media technology supplier in general" score — it has no concept of a specific supplier's category, technology focus, customer base, or geography. Nothing in this chunk reads or stores any supplier/user profile, and nothing personalises the score per requester. Personalisation (the "User Fit" layer from the product direction doc) is explicitly a later, separate build, not silently begun here.
