@@ -154,6 +154,36 @@ against real signals being excluded on recency alone. This hasn't yet been
 re-validated with another pilot — do that next (`RESEARCH_COMPANY_LIMIT=5`,
 `RESEARCH_COMPANY_OFFSET=5`) before assuming it's fixed.
 
+#### Timeout regression (post Build Chunk 1)
+
+The first production run after Build Chunk 1 shipped timed out on 4
+companies (Amazon MGM Studios/Prime Video, Apple TV, YouTube, BBC — ranks
+6-9 in the watchlist). Root cause: adding Antenna Intelligence
+classification into the existing research call roughly quadrupled the
+prompt and grew the JSON schema from 5 fields to 12 (including a free-text
+`classification_reason`), and `max_output_tokens` was raised from 1200 to
+2000 to accommodate it — all within the same fixed 25-second
+`PER_COMPANY_TIMEOUT_MS`. More permitted output directly means more
+generation time, so some companies simply couldn't finish in the window.
+Fix: the classification portion of the prompt was condensed from ~603
+words to ~318 (exhaustive per-band examples replaced with a single anchor
+phrase per band; redundant framing removed) — see `ANTENNA_SCORING_MODEL.md`
+§5 for the current prompt text and the before/after word counts. All 5
+classification fields, the band boundaries, the 5-factor exact-number
+ordering, the conservative-when-torn philosophy, and the JSON output shape
+were preserved unchanged; `PER_COMPANY_TIMEOUT_MS`, `CONCURRENCY`,
+`max_output_tokens`, and the model were deliberately left untouched, since
+the prompt length — not those constants — was the identified driver.
+
+Separately: the timed-out companies (ranks 6-9) are exactly the slice an
+earlier pilot's `RESEARCH_COMPANY_LIMIT=5` + `RESEARCH_COMPANY_OFFSET=5`
+would have produced, which raised the possibility that a stale
+`RESEARCH_COMPANY_OFFSET=5` was left set in the Vercel environment after
+that pilot. That's an environment-configuration check, not a code bug —
+the `.range()`/`.limit()` logic in `lib/runResearch.ts` was reviewed and is
+correct. Check the deployed `RESEARCH_COMPANY_OFFSET` value in Vercel and
+clear it if it's still set to `5`.
+
 #### Cost
 
 OpenAI's published per-1M-token pricing for the GPT-5.6 family (input /

@@ -68,37 +68,34 @@ Search the web for the most recent such signals, ideally from the last 90 days. 
 
 Return AT MOST the 2 strongest findings — the most specific, most recent, best-sourced ones. Do not pad the list; if there is only 1 (or 0), return only that many. Keep "detail" tight: 1-2 sentences, not 2-4.
 
-Once you've identified each finding, classify it using the Antenna Intelligence Scoring Model v0.1 below. Consistency and explainability matter more than false precision — if you're between two values, prefer the lower/more conservative one and say why in classification_reason.
+Then classify each finding (Antenna Intelligence v0.1). Prioritize consistency and explainability over false precision — if torn between two values, pick the lower/more conservative one and say why in classification_reason.
 
-THEME — assign exactly one, verbatim, from this list:
-${THEME_LIST}
+theme: exactly one, verbatim, from: ${THEME_LIST}
+signal_type: exactly one — whichever dimension has the STRONGEST evidence, never several: ${SIGNAL_TYPE_LIST}
 
-SIGNAL_TYPE — assign exactly one primary dimension representing the STRONGEST underlying evidence for this finding (not several, even if more than one applies — you may mention a secondary dimension in classification_reason instead):
-${SIGNAL_TYPE_LIST}
+confidence_score (0-100) — how certain this evidence is genuine, specific, and correctly interpreted. Never raised just because a finding sounds interesting.
+- 90-100: primary/company/IR/regulatory source, or an explicit deal/programme/expenditure — little interpretation needed.
+- 75-89: reputable trade press on specific activity — strong, but not directly from the company.
+- 60-74: credible but some inference needed (timing, scale, or scope partly unclear).
+- 40-59: indirect, ambiguous, or weakly sourced.
+- Below 40: don't return this as a signal.
 
-CONFIDENCE_SCORE (integer 0-100) — "How certain are we this evidence is genuine, specific, and correctly interpreted?" Do not raise this merely because a finding sounds commercially interesting.
-- 90-100 (very high): primary company/IR/regulatory source, official procurement/tender, explicit programme or expenditure, signed contract, acquisition, named project, direct executive statement — little or no interpretation required.
-- 75-89 (high): reputable trade/business press reporting specific activity, named technology initiative, named vendor, defined hiring programme, specific strategic investment — strong evidence but may not come directly from the company.
-- 60-74 (moderate): credible evidence but some inference required — timing, scale, or technology scope partly unclear, or the buying implication isn't fully explicit.
-- 40-59 (low): indirect or ambiguous evidence, weak sourcing, substantial interpretation required.
-- Below 40: normally do not return this as a signal at all.
+intent_score (0-100) — how strongly this indicates current/forthcoming tech investment, driven by buying STAGE, not how exciting it sounds.
+- 95-100: money demonstrably moving (confirmed spend, signed vendor deal, completed acquisition, awarded procurement).
+- 88-94: active procurement (live RFP/tender, budget allocated, suppliers being evaluated).
+- 80-87: concrete programme with a delivery timeline (named transformation programme, platform/product launch requiring implementation).
+- 70-79: strong strategic signal (explicit exec commitment, a dedicated AI/tech team or lab created, hiring tied to a named initiative).
+- 60-69: credible emerging intent (named strategic priority, repeated exec statements, hiring without a named programme).
+- 45-59: early directional only (isolated hiring, early experimentation, broad strategy statements).
+- Below 45: don't return unless there's a compelling reason — state it in classification_reason.
 
-INTENT_SCORE (integer 0-100) — "How strongly does this evidence indicate current or forthcoming technology investment?" Driven by buying/investment STAGE, not by how exciting the story sounds.
-- 95-100: money is demonstrably moving — confirmed material technology expenditure, signed vendor agreement, completed/announced technology acquisition, awarded procurement, explicit approved technology budget with delivery underway.
-- 88-94: active buying/procurement — live RFP/tender, active vendor selection, formal procurement process, explicit budget allocated with suppliers being evaluated, late-stage evaluation with near-term implementation.
-- 80-87: concrete programme with clear investment implication — named technology transformation programme, platform/product/technology launch requiring implementation, major new capability with a delivery timeline, explicit plan to build/deploy specific infrastructure or systems.
-- 70-79: strong strategic investment signal — explicit executive commitment to invest materially in a defined technology area, creation of a dedicated AI/cloud/technology team or lab, substantial specialist hiring attached to a named initiative, clearly stated near-term implementation plans without procurement evidence yet.
-- 60-69: credible emerging intent — technology identified as a strategic priority, repeated executive statements about future investment, meaningful specialist hiring without a clearly identified programme, exploratory pilots with credible potential to scale.
-- 45-59: early directional signal — isolated specialist hiring, early experimentation, broad strategy statements, partnership exploration with unclear buying implications.
-- Below 45: normally do not return this as a signal unless there is a compelling reason — if you do, state that reason explicitly in classification_reason.
+Within a band, rank the exact number by, in order: buying stage, specificity (named project/vendor/budget/timeline), evidence strength, recency, then scale/materiality. No hidden weighting — the number must be defensible from classification_reason alone.
 
-Within the correct band, choose the exact number using these factors IN THIS ORDER: (1) buying stage — how close to actual expenditure; (2) specificity — is there a named project, vendor, budget, technology, or timeline; (3) evidence strength — how directly the evidence establishes the claimed intent; (4) recency — newer evidence beats otherwise-equivalent older evidence; (5) scale/materiality — only where genuinely evidenced, may justify the upper end of the band. Do not apply hidden bonuses, arbitrary points, or unstated weighting — every score must be defensible from classification_reason alone.
+classification_reason: 1-2 sentences naming the evidence and which factor drove the score, so it's checkable without the source.
 
-CLASSIFICATION_REASON — 1-3 concise sentences a reader could use to verify both scores without re-reading the source: name the evidence you weighted and which band/factor drove the number.
+confirmed_spend_amount / confirmed_spend_currency: only if the source states an explicit figure — never estimate one yourself; otherwise null.
 
-CONFIRMED_SPEND_AMOUNT / CONFIRMED_SPEND_CURRENCY — ONLY populate these if the source states an explicit monetary figure (e.g. "a $50 million cloud migration"). Leave both null if the figure is inferred, estimated by you, or simply absent from the source. Never estimate a number yourself.
-
-Do not include an Opportunity score or Opportunity strength field — Antenna does not calculate those yet.
+Do not add an Opportunity score/field — not calculated yet.
 
 Respond with ONLY a JSON array (no markdown fences, no commentary before or after). Each item must have this shape:
 {"summary": "one sentence", "detail": "1-2 sentences of supporting context", "source_url": "https://...", "source_title": "the article/press-release title", "published_date": "YYYY-MM-DD or null", "theme": "one of the themes above, verbatim", "signal_type": "one of: ${SIGNAL_TYPE_LIST}", "confidence_score": 0-100, "intent_score": 0-100, "classification_reason": "concise explanation grounding both scores", "confirmed_spend_amount": number or null, "confirmed_spend_currency": "ISO 4217 currency code or null"}
